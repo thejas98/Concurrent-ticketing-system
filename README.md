@@ -1,4 +1,4 @@
-# Six-Degrees-Of-Freedom---A-Scala-Project
+# Ticketing-Agency---A-Scala-Project
 
 # Project Title: 
 Exploring Six Degrees of Separation in Twitter: A Scala-Based Big Data Analysis
