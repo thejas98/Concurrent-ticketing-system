@@ -1,7 +1,7 @@
 package actors
 
 import actors.PersistentEventManager.Command.UpdateEvent
-import actors.TicketSellerActor.TicketsState
+import actors.TicketActor.TicketsState
 import akka.NotUsed
 import akka.actor.typed.scaladsl.AskPattern.Askable
 import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
@@ -15,7 +15,7 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 import java.util.UUID
 import scala.util.{Failure, Success, Try}
 
-object TicketSellerActor {
+object TicketActor {
   // Commands
   sealed trait TicketSellerCommand
 
@@ -49,8 +49,8 @@ object TicketSellerActor {
   // available tickets
   case class AvailableTickets(value: Int)
 
-  import TicketSellerActor.TicketSellerResponse._
-  import actors.TicketSellerActor.TicketSellerCommand._
+  import TicketActor.TicketSellerResponse._
+  import actors.TicketActor.TicketSellerCommand._
 
   // Command Handler
   // create booking id in command handler rather than apply method
@@ -59,34 +59,17 @@ object TicketSellerActor {
     import PersistentEventManager.Response
     import PersistentEventManager.Response._
     import PersistentEventManager.Command._
+    import scala.concurrent.duration._
+    implicit val timeout: Timeout = Timeout(10.seconds)
+    implicit val scheduler: Scheduler = context.system.scheduler
+    implicit val ec: ExecutionContext = context.executionContext
 
     command match {
       case BuyTicket(eventId, numOfTickets, customerID, inventory) =>
         val id = state.ticketID
-        println("initial ticket status: " + state.ticketStatus)
-
-        import scala.concurrent.duration._
-        implicit val timeout: Timeout = Timeout(10.seconds)
-        implicit val scheduler: Scheduler = context.system.scheduler
-        implicit val ec: ExecutionContext = context.executionContext
-
-//        var availableTickets = 0
 
 
-        val responseHandlerUpdate = context.spawn(Behaviors.receiveMessage[Response] {
-          case EventUpdatedResponse(maybeEvent) =>
-            Behaviors.same
-        }, "replyHandlerTicketsUpdate")
-        val responseHandlerAvailability = context.spawn(Behaviors.receiveMessage[Response] {
-          case GetEventResponse(maybeEvent) =>
-            println(maybeEvent)
-            println("getEventResponse: " + maybeEvent.get.venue)
-            val availableTickets = maybeEvent.get.maxTickets
-            println(availableTickets)
-            Behaviors.same
-        }
-          , "replyHandlerTicketsAvailability"
-        )
+
 
         val eventManager = context.spawn(EventManagement(), "checkAvailability")
         val askGetEvent = eventManager ? (replyTo => GetEvent(eventId, replyTo))
@@ -121,14 +104,17 @@ object TicketSellerActor {
                 .persist(TicketPurchased(TicketsState(id, eventId, numOfTickets, ticketStatus, customerID)))
                 .thenReply(inventory)(newState => PurchaseResponse(newState))
             }
-            /* when await exceeds the time limit it won't return a value */
+          /* when await exceeds the time limit it won't return a value */
           case _ => Effect.none
         }
 
-      case CancelTicket(_, inventory) =>
+      case CancelTicket(ticketID, inventory) =>
         val ticket_curr_status = state.ticketStatus
         ticket_curr_status match {
           case "Successful" =>
+            val eventManagerUpdate = context.spawn(EventManagement(), "updateAvailability")
+            val updateEventResponse = eventManagerUpdate.ask(replyTo => UpdateEvent(state.eventID, Some(10.3), Some("venue new thing34"), replyTo)).map()
+
             Effect
               .persist(TicketCancelled("Cancelled"))
               .thenReply(inventory)(newState => CancellationResponse(newState))
@@ -149,7 +135,6 @@ object TicketSellerActor {
         println("event Handler")
         ticketsState
       case TicketCancelled(change_status) =>
-//        context.spawn()
         state.copy(ticketStatus = change_status)
     }
   }
@@ -171,9 +156,9 @@ object TicketSellerActor {
 
 object InventoryManager {
 
-  import TicketSellerActor.TicketSellerCommand
-  import TicketSellerActor.TicketSellerCommand._
-  import TicketSellerActor.TicketSellerCommand._
+  import TicketActor.TicketSellerCommand
+  import TicketActor.TicketSellerCommand._
+  import TicketActor.TicketSellerCommand._
 
   // events
   sealed trait Event
@@ -188,7 +173,7 @@ object InventoryManager {
     command match {
       case buyCommand@BuyTicket(_, _, _, _) =>
         val id = "BookingID-" + UUID.randomUUID().toString
-        val newPurchase = context.spawn(TicketSellerActor(id), id)
+        val newPurchase = context.spawn(TicketActor(id), id)
         Effect
           .persist(TicketsCreated(id))
           .thenReply(newPurchase)(_ => buyCommand)
@@ -204,7 +189,7 @@ object InventoryManager {
     event match {
       case TicketsCreated(id) =>
         val tickets = context.child(id)
-          .getOrElse(context.spawn(TicketSellerActor(id), id))
+          .getOrElse(context.spawn(TicketActor(id), id))
           .asInstanceOf[ActorRef[TicketSellerCommand]]
         state.copy(state.tickets + (id -> tickets))
 
@@ -226,56 +211,41 @@ object InventoryManager {
 
 object TicketSellerPlayGround {
 
-  import TicketSellerActor.TicketSellerCommand._
-  import TicketSellerActor.TicketSellerResponse._
-  import TicketSellerActor.TicketSellerResponse
-  import TicketSellerActor.TicketSellerCommand._
+  import TicketActor.TicketSellerCommand._
+  import TicketActor.TicketSellerResponse._
+  import TicketActor.TicketSellerResponse
+  import TicketActor.TicketSellerCommand._
   import PersistentEventManager.Command._
   import PersistentEventManager.Response
   import PersistentEventManager.Response._
 
   def main(args: Array[String]): Unit = {
     val rootBehavior: Behavior[NotUsed] = Behaviors.setup { context =>
-            val eventManagement = context.spawn(EventManagement(), "eventManagement")
-//      val inventory = context.spawn(InventoryManager(), "InventoryActor")
-      //      val logger = context.log
-
+      val inventory = context.spawn(InventoryManager(), "InventoryActor")
       val responseHandlerInventory = context.spawn(Behaviors.receiveMessage[TicketSellerResponse] {
-
         case PurchaseResponse(ticket) =>
-          println("response handler inventory")
-          println("ticketstatus:" + ticket.ticketID)
-          println("ticketstatus:" + ticket.ticketStatus)
-          println("customerID:" + ticket.customerID)
           Behaviors.same
         case CancellationResponse(ticket) =>
-          println("purchased customer: " + ticket.customerID)
-          println("new ticket status: " + ticket.ticketStatus)
-          Behaviors.same
-        case _ => println("don't know what is happening")
           Behaviors.same
       }, "replyHandlerInventory")
 
       val responseHandler = context.spawn(Behaviors.receiveMessage[Response] {
         case EventCreatedResponse(eventId) =>
           println("event ID:" + eventId)
-          //          logger.info(s"Successfully created event $eventId")
           Behaviors.same
         case GetEventResponse(maybeEvent) =>
           println("Event Max Tickets: " + maybeEvent.get.maxTickets)
-          //          logger.info(s"Event details: $maybeEvent")
           Behaviors.same
       }, "replyHandler")
 
-      //      val logger = context.log
 
       // Testing eventmanagement
-//                  eventManagement ! CreateEvent("Celtics Match", "Arena A", "Music Corp", 50.0, 1000, "2023-12-15 19:00:00", 120, responseHandler)
-            eventManagement ! GetEvent("88cbb056-ad94-4de9-86aa-56d767907c08", responseHandler)
+//      eventManagement ! CreateEvent("Celtics Match", "Arena A", "Music Corp", 50.0, 1000, "2023-12-15 19:00:00", 120, responseHandler)
+//      eventManagement ! GetEvent("88cbb056-ad94-4de9-86aa-56d767907c08", responseHandler)
 
       //       test 1
-//      inventory ! BuyTicket("88cbb056-ad94-4de9-86aa-56d767907c08", 100, "Michael Jordan Testing4", responseHandlerInventory)
-      //      inventory ! CancelTicket("BookingID-54844367-c4b7-441b-9b42-c9daadf76452", responseHandlerInventory )
+      inventory ! BuyTicket("acb4e2d6-877f-4097-a644-27f53920a6a1", 100, "Michael Jordan Testing23233234", responseHandlerInventory)
+      inventory ! CancelTicket("BookingID-54844367-c4b7-441b-9b42-c9daadf76452", responseHandlerInventory)
       Behaviors.empty
     }
     val system = ActorSystem(rootBehavior, "TicketSellerDemo")
