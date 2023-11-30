@@ -9,8 +9,8 @@ import scala.util.{Failure, Success, Try}
 object Event {
 
   // Commands
-  trait Command
-  object Command {
+  trait EventCommand
+  object EventCommand {
     case class CreateEvent(
                             eventName: String,
                             venue: String,
@@ -19,23 +19,23 @@ object Event {
                             maxTickets: Int,
                             dateTime: String,
                             duration: Int,
-                            replyTo: ActorRef[Response]
-                          ) extends Command
+                            replyTo: ActorRef[EventResponse]
+                          ) extends EventCommand
 
     case class UpdateEvent(
                             eventId: String,
                             maxTickets: Int,
-                            replyTo: ActorRef[Response]
-                          ) extends Command
+                            replyTo: ActorRef[EventResponse]
+                          ) extends EventCommand
 
-    case class GetEvent(eventId: String, replyTo: ActorRef[Response]) extends Command
+    case class GetEvent(eventId: String, replyTo: ActorRef[EventResponse]) extends EventCommand
 
   }
 
   // Events
-  sealed trait Event
-  case class EventCreated(event: EventDetails) extends Event
-  case class EventUpdated(maxTickets: Int) extends Event
+  sealed trait EventEvent
+  case class EventCreated(event: EventDetails) extends EventEvent
+  case class EventUpdated(maxTickets: Int) extends EventEvent
 
   // State
   case class EventDetails(
@@ -50,19 +50,19 @@ object Event {
                          )
 
   // Responses
-  trait Response
-  object Response {
-    case class EventCreatedResponse(eventId: String) extends Response
-    case class EventUpdatedResponse(maybeEvent: Option[EventDetails]) extends Response
-    case class GetEventResponse(maybeEvent: Option[EventDetails]) extends Response
+  trait EventResponse
+  object EventResponse {
+    case class EventCreatedResponse(eventId: String) extends EventResponse
+    case class EventUpdatedResponse(maybeEvent: Option[EventDetails]) extends EventResponse
+    case class GetEventResponse(maybeEvent: Option[EventDetails]) extends EventResponse
 
   }
 
-  import Command._
-  import Response._
+  import EventCommand._
+  import EventResponse._
 
   // Command handler
-  val commandHandler: (EventDetails, Command) => Effect[Event, EventDetails] = (state, command) =>
+  val commandHandler: (EventDetails, EventCommand) => Effect[EventEvent, EventDetails] = (state, command) =>
     command match {
       case CreateEvent(eventName, venue, organizer, cost, maxTickets, dateTime, duration, replyTo) =>
         val eventId = state.eventId
@@ -82,7 +82,7 @@ object Event {
     }
 
   // Event handler
-  val eventHandler: (EventDetails, Event) => EventDetails = (state, event) =>
+  val eventHandler: (EventDetails, EventEvent) => EventDetails = (state, event) =>
     event match {
       case EventCreated(eventDetails) =>
         eventDetails
@@ -91,8 +91,8 @@ object Event {
     }
 
   // Behavior definition
-  def apply(eventId: String): Behavior[Command] =
-    EventSourcedBehavior[Command, Event, EventDetails](
+  def apply(eventId: String): Behavior[EventCommand] =
+    EventSourcedBehavior[EventCommand, EventEvent, EventDetails](
       persistenceId = PersistenceId.ofUniqueId(eventId),
       emptyState = EventDetails("", "", "", "", 0.0, 0, "", 0),
       commandHandler = commandHandler,

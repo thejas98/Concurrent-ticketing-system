@@ -7,15 +7,15 @@ import akka.persistence.typed.scaladsl.{Effect, EventSourcedBehavior}
 object Customer {
 
   // Commands
-  trait Command
-  object Command {
-    case class CreateCustomer(firstName: String, lastName: String, email: String, phoneNumber: String, replyTo: ActorRef[Response]) extends Command
-    case class GetCustomer(customerId:String ,replyTo: ActorRef[Response]) extends Command
+  trait CustomerCommand
+  object CustomerCommand {
+    case class CreateCustomer(firstName: String, lastName: String, email: String, phoneNumber: String, replyTo: ActorRef[CustomerResponse]) extends CustomerCommand
+    case class GetCustomer(customerId:String ,replyTo: ActorRef[CustomerResponse]) extends CustomerCommand
   }
 
   // Events
-  sealed trait Event
-  case class CustomerCreated(customer:CustomerDetails) extends Event
+  sealed trait CustomerEvent
+  case class CustomerCreated(customer:CustomerDetails) extends CustomerEvent
 
   // State
   case class CustomerDetails(
@@ -27,17 +27,17 @@ object Customer {
                             )
 
   // Responses
-  trait Response
-  object Response {
-    case class CustomerCreatedResponse(customerId: String) extends Response
-    case class GetCustomerResponse(maybeCustomer: Option[CustomerDetails]) extends Response
+  trait CustomerResponse
+  object CustomerResponse {
+    case class CustomerCreatedResponse(customerId: String) extends CustomerResponse
+    case class GetCustomerResponse(maybeCustomer: Option[CustomerDetails]) extends CustomerResponse
   }
 
-  import Command._
-  import Response._
+  import CustomerCommand._
+  import CustomerResponse._
 
   // Command handler
-  val commandHandler: (CustomerDetails, Command) => Effect[Event, CustomerDetails] = (state, command) =>
+  val commandHandler: (CustomerDetails, CustomerCommand) => Effect[CustomerEvent, CustomerDetails] = (state, command) =>
     command match {
       case CreateCustomer(firstName, lastName, email, phoneNumber, replyTo) =>
         val customerId = state.customerId
@@ -52,7 +52,7 @@ object Customer {
     }
 
   // Event handler
-  val eventHandler: (CustomerDetails, Event) => CustomerDetails = (state, event) =>
+  val eventHandler: (CustomerDetails, CustomerEvent) => CustomerDetails = (state, event) =>
     event match {
       case CustomerCreated(customerDetails) =>
         customerDetails
@@ -60,8 +60,8 @@ object Customer {
     }
 
   // Behavior definition
-  def apply(customerID: String): Behavior[Command] =
-    EventSourcedBehavior[Command, Event, CustomerDetails](
+  def apply(customerID: String): Behavior[CustomerCommand] =
+    EventSourcedBehavior[CustomerCommand, CustomerEvent, CustomerDetails](
       persistenceId = PersistenceId.ofUniqueId(customerID),
       emptyState = CustomerDetails("", "", "", "", ""),
       commandHandler = commandHandler,

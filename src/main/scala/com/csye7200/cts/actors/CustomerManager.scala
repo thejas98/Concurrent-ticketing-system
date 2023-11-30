@@ -14,26 +14,26 @@ import scala.util.Failure
 object CustomerManager {
 
   // commands = messages
-  import Customer.Command._
-  import Customer.Response._
-  import Customer.Command
-  import Customer.Response
+  import Customer.CustomerCommand._
+  import Customer.CustomerResponse._
+  import Customer.CustomerCommand
+  import Customer.CustomerResponse
 
   // command for Get All Events
-  case class GetAllCustomers(replyTo : ActorRef[Response] ) extends Command
+  case class GetAllCustomers(replyTo : ActorRef[CustomerResponse] ) extends CustomerCommand
 
   // Response for Get All Events
-  case class GetAllCustomersResponse(allCustomers: Option[List[String]]) extends Response
+  case class GetAllCustomersResponse(allCustomers: Option[List[String]]) extends CustomerResponse
 
   // events
   sealed trait Event
   case class CustomerCreated(customerID: String) extends Event
 
   // state
-  case class State(customers: Map[String, ActorRef[Command]])
+  case class State(customers: Map[String, ActorRef[CustomerCommand]])
 
   // command handler
-  def commandHandler(context: ActorContext[Command]): (State, Command) => Effect[Event, State] = (state, command) =>
+  def commandHandler(context: ActorContext[CustomerCommand]): (State, CustomerCommand) => Effect[Event, State] = (state, command) =>
     command match {
       case createCommand @ CreateCustomer(firstName,lastName,email,phoneNumber, replyTo) =>
         val customerID = "customerID-"+UUID.randomUUID().toString
@@ -55,18 +55,18 @@ object CustomerManager {
     }
 
   // event handler
-  def eventHandler(context: ActorContext[Command]): (State, Event) => State = (state, event) =>
+  def eventHandler(context: ActorContext[CustomerCommand]): (State, Event) => State = (state, event) =>
     event match {
       case CustomerCreated(customerID) =>
         val customerActor = context.child(customerID)
           .getOrElse(context.spawn(Customer(customerID), customerID))
-          .asInstanceOf[ActorRef[Command]]
+          .asInstanceOf[ActorRef[CustomerCommand]]
         state.copy(state.customers + (customerID -> customerActor))
     }
 
   // behavior
-  def apply(): Behavior[Command] = Behaviors.setup { context =>
-    EventSourcedBehavior[Command, Event, State](
+  def apply(): Behavior[CustomerCommand] = Behaviors.setup { context =>
+    EventSourcedBehavior[CustomerCommand, Event, State](
       persistenceId = PersistenceId.ofUniqueId("customer-management"),
       emptyState = State(Map()),
       commandHandler = commandHandler(context),
@@ -76,9 +76,9 @@ object CustomerManager {
 }
 
 object CustomerManagementPlayground {
-  import Customer.Command._
-  import Customer.Response._
-  import Customer.Response
+  import Customer.CustomerCommand._
+  import Customer.CustomerResponse._
+  import Customer.CustomerResponse
   import CustomerManager.GetAllCustomersResponse
   import CustomerManager.GetAllCustomers
   def main(args: Array[String]): Unit = {
@@ -86,7 +86,7 @@ object CustomerManagementPlayground {
       val customerManagement = context.spawn(CustomerManager(), "customerManagement")
       val logger = context.log
 
-      val responseHandler = context.spawn(Behaviors.receiveMessage[Response] {
+      val responseHandler = context.spawn(Behaviors.receiveMessage[CustomerResponse] {
         case CustomerCreatedResponse(customerID) =>
           logger.info(s"Successfully created Customer $customerID")
           Behaviors.same
@@ -103,7 +103,7 @@ object CustomerManagementPlayground {
       implicit val timeout: Timeout = Timeout(2.seconds)
       implicit val scheduler: Scheduler = context.system.scheduler
       implicit val ec: ExecutionContext = context.executionContext
-//      customerManagement ! CreateCustomer("John", "Doe", "john.doe@example.com", "+1234567890", responseHandler)
+      customerManagement ! CreateCustomer("John", "Doe", "john.doe@example.com", "+1234567890", responseHandler)
       customerManagement ! GetAllCustomers(responseHandler)
 
 

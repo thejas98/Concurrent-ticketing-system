@@ -14,25 +14,25 @@ import scala.util.Failure
 object EventManager {
 
   // commands = messages
-  import Event.Command._
-  import Event.Response._
-  import Event.Command
-  import Event.Response
+  import Event.EventCommand._
+  import Event.EventResponse._
+  import Event.EventCommand
+  import Event.EventResponse
 
   // command for Get All Events
-  case class GetAllEvents(replyTo : ActorRef[Response] ) extends Command
+  case class GetAllEvents(replyTo : ActorRef[EventResponse] ) extends EventCommand
 
   // Response for Get All Events
-  case class GetAllEventsResponse(allEvents: Option[List[String]]) extends Response
+  case class GetAllEventsResponse(allEvents: Option[List[String]]) extends EventResponse
 
   // events
   sealed trait Event
   case class EventCreated(eventID: String) extends Event
   // state
-  case class State(events: Map[String, ActorRef[Command]])
+  case class State(events: Map[String, ActorRef[EventCommand]])
 
   // command handler
-  def commandHandler(context: ActorContext[Command]): (State, Command) => Effect[Event, State] = (state, command) =>
+  def commandHandler(context: ActorContext[EventCommand]): (State,EventCommand) => Effect[Event, State] = (state, command) =>
     command match {
       case createCommand @ CreateEvent(eventName, venue, organizer, cost, maxTickets, dateTime, duration, replyTo) =>
         val eventId = "EventID-"+UUID.randomUUID().toString
@@ -58,18 +58,18 @@ object EventManager {
     }
 
   // event handler
-  def eventHandler(context: ActorContext[Command]): (State, Event) => State = (state, event) =>
+  def eventHandler(context: ActorContext[EventCommand]): (State, Event) => State = (state, event) =>
     event match {
       case EventCreated(eventId) =>
         val eventActor = context.child(eventId)
           .getOrElse(context.spawn(Event(eventId), eventId))
-          .asInstanceOf[ActorRef[Command]]
+          .asInstanceOf[ActorRef[EventCommand]]
         state.copy(state.events + (eventId -> eventActor))
     }
 
   // behavior
-  def apply(): Behavior[Command] = Behaviors.setup { context =>
-    EventSourcedBehavior[Command, Event, State](
+  def apply(): Behavior[EventCommand] = Behaviors.setup { context =>
+    EventSourcedBehavior[EventCommand, Event, State](
       persistenceId = PersistenceId.ofUniqueId("event-management"),
       emptyState = State(Map()),
       commandHandler = commandHandler(context),
@@ -79,9 +79,9 @@ object EventManager {
 }
 
 object EventManagementPlayground {
-  import Event.Command._
-  import Event.Response._
-  import Event.Response
+  import Event.EventCommand._
+  import Event.EventResponse._
+  import Event.EventResponse
   import EventManager.GetAllEventsResponse
   import EventManager.GetAllEvents
   def main(args: Array[String]): Unit = {
@@ -89,7 +89,7 @@ object EventManagementPlayground {
       val eventManagement = context.spawn(EventManager(), "eventManagement")
       val logger = context.log
 
-      val responseHandler = context.spawn(Behaviors.receiveMessage[Response] {
+      val responseHandler = context.spawn(Behaviors.receiveMessage[EventResponse] {
         case EventCreatedResponse(eventId) =>
           logger.info(s"Successfully created event $eventId")
           Behaviors.same
