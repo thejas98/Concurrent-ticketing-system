@@ -1,14 +1,17 @@
 package actors
 
+import actors.PersistentEventManager.Command.UpdateEvent
 import actors.TicketSellerActor.TicketsState
 import akka.NotUsed
 import akka.actor.typed.scaladsl.AskPattern.Askable
 import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
-import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
+import akka.actor.typed.{ActorRef, ActorSystem, Behavior, Scheduler}
 import akka.persistence.Persistence
 import akka.persistence.typed.PersistenceId
 import akka.persistence.typed.scaladsl.{Effect, EventSourcedBehavior}
+import akka.util.Timeout
 
+import scala.concurrent.{Await, ExecutionContext, Future}
 import java.util.UUID
 import scala.util.{Failure, Success, Try}
 
@@ -18,19 +21,25 @@ object TicketSellerActor {
 
   object TicketSellerCommand {
     case class BuyTicket(eventId: String, numOfTickets: Int, customerID: String, replyToInventory: ActorRef[TicketSellerResponse]) extends TicketSellerCommand
+
     case class CancelTicket(ticketID: String, replyToInventory: ActorRef[TicketSellerResponse]) extends TicketSellerCommand
+
     case class GetBookingReference()
   }
 
   // Events
   sealed trait TicketSellerEvent
+
   case class TicketPurchased(ticketsState: TicketsState) extends TicketSellerEvent
+
   case class TicketCancelled(changeStatus: String) extends TicketSellerEvent
 
   // Responses
   sealed trait TicketSellerResponse
+
   object TicketSellerResponse {
     case class PurchaseResponse(tickets: TicketsState) extends TicketSellerResponse
+
     case class CancellationResponse(tickets: TicketsState) extends TicketSellerResponse
   }
 
@@ -39,6 +48,7 @@ object TicketSellerActor {
 
   // available tickets
   case class AvailableTickets(value: Int)
+
   import TicketSellerActor.TicketSellerResponse._
   import actors.TicketSellerActor.TicketSellerCommand._
 
@@ -53,33 +63,67 @@ object TicketSellerActor {
     command match {
       case BuyTicket(eventId, numOfTickets, customerID, inventory) =>
         val id = state.ticketID
-        val eventManager = context.spawn(EventManagement(), "checkAvailability")
-        val eventManagerUpdate = context.spawn(EventManagement(), "updateAvailability")
+        println("initial ticket status: " + state.ticketStatus)
 
-        val responseHandler = context.spawn(Behaviors.receiveMessage[Response] {
-          case GetEventResponse(maybeEvent) =>
-            println("getEventResponse: " + maybeEvent.get.venue)
-            val availableTickets = maybeEvent.get.maxTickets
-              if (numOfTickets > availableTickets) {
-                val ticketStatus = "Unsuccessful"
-                Effect
-                  .persist(TicketPurchased(TicketsState(id, eventId, numOfTickets, ticketStatus, customerID)))
-                  .thenReply(inventory)(newState => PurchaseResponse(newState))
-              } else {
-                eventManagerUpdate ! UpdateEvent(eventId, Some(10.3), Some("venue"), responseHandler)
-                val ticketStatus = "Successful"
-                Effect
-                  .persist(TicketPurchased(TicketsState(id, eventId, numOfTickets, ticketStatus, customerID)))
-                  .thenReply(inventory)(newState => PurchaseResponse(newState))
-              }
-            Behaviors.same
+        import scala.concurrent.duration._
+        implicit val timeout: Timeout = Timeout(10.seconds)
+        implicit val scheduler: Scheduler = context.system.scheduler
+        implicit val ec: ExecutionContext = context.executionContext
+
+//        var availableTickets = 0
+
+
+        val responseHandlerUpdate = context.spawn(Behaviors.receiveMessage[Response] {
           case EventUpdatedResponse(maybeEvent) =>
             Behaviors.same
-        }, "replyHandler")
-        eventManager ! GetEvent(eventId, responseHandler)
-        Effect.none
+        }, "replyHandlerTicketsUpdate")
+        val responseHandlerAvailability = context.spawn(Behaviors.receiveMessage[Response] {
+          case GetEventResponse(maybeEvent) =>
+            println(maybeEvent)
+            println("getEventResponse: " + maybeEvent.get.venue)
+            val availableTickets = maybeEvent.get.maxTickets
+            println(availableTickets)
+            Behaviors.same
+        }
+          , "replyHandlerTicketsAvailability"
+        )
 
-
+        val eventManager = context.spawn(EventManagement(), "checkAvailability")
+        val askGetEvent = eventManager ? (replyTo => GetEvent(eventId, replyTo))
+        val result = Await.result(askGetEvent, timeout.duration)
+        result match {
+          case GetEventResponse(maybeEvent) =>
+            println("getEventResponse during availability checking: " + maybeEvent.get.venue)
+            val availableTickets = maybeEvent.get.maxTickets
+            if (numOfTickets > availableTickets) {
+              println(availableTickets)
+              val ticketStatus = "Unsuccessful"
+              Effect
+                .persist(TicketPurchased(TicketsState(id, eventId, numOfTickets, ticketStatus, customerID)))
+                .thenReply(inventory)(newState => PurchaseResponse(newState))
+            }
+            else {
+              val eventManagerUpdate = context.spawn(EventManagement(), "updateAvailability")
+              val updateEventResponse = eventManagerUpdate.ask(replyTo => UpdateEvent(eventId, Some(10.3), Some("venue new thing34"), replyTo))
+              updateEventResponse.map {
+                case EventUpdatedResponse(maybeEvent) =>
+                  maybeEvent.foreach {
+                    event =>
+                      println(event.eventId)
+                      println(event.eventName)
+                      println(event.maxTickets)
+                      println(event.venue)
+                  }
+              }
+              println("inside else condition")
+              val ticketStatus = "Successful"
+              Effect
+                .persist(TicketPurchased(TicketsState(id, eventId, numOfTickets, ticketStatus, customerID)))
+                .thenReply(inventory)(newState => PurchaseResponse(newState))
+            }
+            /* when await exceeds the time limit it won't return a value */
+          case _ => Effect.none
+        }
 
       case CancelTicket(_, inventory) =>
         val ticket_curr_status = state.ticketStatus
@@ -90,23 +134,25 @@ object TicketSellerActor {
               .thenReply(inventory)(newState => CancellationResponse(newState))
           case "Unsuccessful" =>
             Effect
-              .persist(TicketCancelled("Unsuccessful"))
-              .thenReply(inventory)(newState => CancellationResponse(newState))
+              .reply(inventory)(CancellationResponse(state))
           case "Cancelled" =>
             Effect
-              .persist(TicketCancelled("Cancelled"))
-              .thenReply(inventory)(newState => CancellationResponse(newState))
+              .reply(inventory)(CancellationResponse(state))
         }
     }
   }
 
-  val eventHandler: (TicketsState, TicketSellerEvent) => TicketsState = (state, event) =>
+  def eventHandler(context: ActorContext[TicketSellerCommand]): (TicketsState, TicketSellerEvent) => TicketsState = (state, event) => {
+
     event match {
       case TicketPurchased(ticketsState) =>
+        println("event Handler")
         ticketsState
       case TicketCancelled(change_status) =>
+//        context.spawn()
         state.copy(ticketStatus = change_status)
     }
+  }
 
   // ticketID and eventID is passed from customer.
   def apply(ticketID: String): Behavior[TicketSellerCommand] = Behaviors.setup {
@@ -117,7 +163,7 @@ object TicketSellerActor {
         persistenceId = PersistenceId.ofUniqueId(ticketID),
         emptyState = TicketsState(ticketID, "", 0, "", ""),
         commandHandler = commandHandler(context),
-        eventHandler = eventHandler
+        eventHandler = eventHandler(context)
       )
     }
   }
@@ -179,38 +225,224 @@ object InventoryManager {
 
 
 object TicketSellerPlayGround {
+
   import TicketSellerActor.TicketSellerCommand._
   import TicketSellerActor.TicketSellerResponse._
   import TicketSellerActor.TicketSellerResponse
   import TicketSellerActor.TicketSellerCommand._
-
+  import PersistentEventManager.Command._
+  import PersistentEventManager.Response
+  import PersistentEventManager.Response._
 
   def main(args: Array[String]): Unit = {
     val rootBehavior: Behavior[NotUsed] = Behaviors.setup { context =>
+            val eventManagement = context.spawn(EventManagement(), "eventManagement")
+//      val inventory = context.spawn(InventoryManager(), "InventoryActor")
+      //      val logger = context.log
 
-      val inventory = context.spawn(InventoryManager(), "InventoryActor")
-//      val logger = context.log
+      val responseHandlerInventory = context.spawn(Behaviors.receiveMessage[TicketSellerResponse] {
 
-      val responseHandlerInventory = context.spawn(Behaviors.receiveMessage[TicketSellerResponse]{
         case PurchaseResponse(ticket) =>
-          val ticketStatus = ticket.ticketStatus
-          println(ticketStatus)
+          println("response handler inventory")
+          println("ticketstatus:" + ticket.ticketID)
+          println("ticketstatus:" + ticket.ticketStatus)
+          println("customerID:" + ticket.customerID)
           Behaviors.same
         case CancellationResponse(ticket) =>
           println("purchased customer: " + ticket.customerID)
           println("new ticket status: " + ticket.ticketStatus)
           Behaviors.same
+        case _ => println("don't know what is happening")
+          Behaviors.same
+      }, "replyHandlerInventory")
+
+      val responseHandler = context.spawn(Behaviors.receiveMessage[Response] {
+        case EventCreatedResponse(eventId) =>
+          println("event ID:" + eventId)
+          //          logger.info(s"Successfully created event $eventId")
+          Behaviors.same
+        case GetEventResponse(maybeEvent) =>
+          println("Event Max Tickets: " + maybeEvent.get.maxTickets)
+          //          logger.info(s"Event details: $maybeEvent")
+          Behaviors.same
       }, "replyHandler")
 
-//      val logger = context.log
+      //      val logger = context.log
 
+      // Testing eventmanagement
+//                  eventManagement ! CreateEvent("Celtics Match", "Arena A", "Music Corp", 50.0, 1000, "2023-12-15 19:00:00", 120, responseHandler)
+            eventManagement ! GetEvent("88cbb056-ad94-4de9-86aa-56d767907c08", responseHandler)
 
       //       test 1
-      inventory ! BuyTicket("eventID001", 10, "customerID1", responseHandlerInventory)
-//      inventory ! CancelTicket("BookingID-89c1b68f-8563-4c31-8fdb-e78a44a1c3bd", responseHandlerInventory )
+//      inventory ! BuyTicket("88cbb056-ad94-4de9-86aa-56d767907c08", 100, "Michael Jordan Testing4", responseHandlerInventory)
+      //      inventory ! CancelTicket("BookingID-54844367-c4b7-441b-9b42-c9daadf76452", responseHandlerInventory )
       Behaviors.empty
     }
     val system = ActorSystem(rootBehavior, "TicketSellerDemo")
   }
+}
+
+object EventManagement {
+
+  // commands = messages
+
+  import PersistentEventManager.Command._
+  import PersistentEventManager.Response._
+  import PersistentEventManager.Command
+
+  import PersistentEventManager.EventDetails
+
+  // events
+  sealed trait Event
+
+  case class EventCreated(eventDetails: EventDetails) extends Event
+
+  // state
+  case class State(events: Map[String, ActorRef[Command]])
+
+  // command handler
+  def commandHandler(context: ActorContext[Command]): (State, Command) => Effect[Event, State] = (state, command) =>
+
+    command match {
+      case createCommand@CreateEvent(eventName, venue, organizer, cost, maxTickets, dateTime, duration, replyTo) =>
+        println("state: " + state)
+        val eventId = UUID.randomUUID().toString
+        val newEvent = context.spawn(PersistentEventManager(eventId), eventId)
+        Effect
+          .persist(EventCreated(EventDetails(eventId, eventName, venue, organizer, cost, maxTickets, dateTime, duration)))
+          .thenReply(newEvent)(_ => createCommand)
+      case updateCmd@UpdateEvent(eventId, newCost, newVenue, replyTo) =>
+        state.events.get(eventId) match {
+          case Some(event) =>
+            Effect.reply(event)(updateCmd)
+          case None =>
+            Effect.reply(replyTo)(EventUpdatedResponse(Failure(new RuntimeException("Event cannot be found"))))
+        }
+      case getCmd@GetEvent(eventId, replyTo) =>
+        state.events.get(eventId) match {
+          case Some(event) =>
+            Effect.reply(event)(getCmd)
+          case None =>
+            Effect.reply(replyTo)(GetEventResponse(None))
+        }
+    }
+
+  // event handler
+  def eventHandler(context: ActorContext[Command]): (State, Event) => State = (state, event) =>
+    event match {
+      case EventCreated(eventDetails) =>
+        val eventActor = context.child(eventDetails.eventId)
+          .getOrElse(context.spawn(PersistentEventManager(eventDetails.eventId), eventDetails.eventId))
+          .asInstanceOf[ActorRef[Command]]
+        state.copy(state.events + (eventDetails.eventId -> eventActor))
+    }
+
+  // behavior
+  def apply(): Behavior[Command] = Behaviors.setup { context =>
+    EventSourcedBehavior[Command, Event, State](
+      persistenceId = PersistenceId.ofUniqueId("event-management"),
+      emptyState = State(Map()),
+      commandHandler = commandHandler(context),
+      eventHandler = eventHandler(context)
+    )
+  }
+}
+
+object PersistentEventManager {
+
+  // Commands
+  sealed trait Command
+
+  object Command {
+    case class CreateEvent(
+                            eventName: String,
+                            venue: String,
+                            organizer: String,
+                            cost: Double,
+                            maxTickets: Int,
+                            dateTime: String,
+                            duration: Int,
+                            replyTo: ActorRef[Response]
+                          ) extends Command
+
+    case class UpdateEvent(
+                            eventId: String,
+                            cost: Option[Double],
+                            venue: Option[String],
+                            replyTo: ActorRef[Response]
+                          ) extends Command
+
+    case class GetEvent(eventId: String, replyTo: ActorRef[Response]) extends Command
+  }
+
+  // Events
+  sealed trait Event
+
+  case class EventCreated(event: EventDetails) extends Event
+
+  case class EventUpdated(cost: Option[Double], venue: Option[String]) extends Event
+
+  // State
+  case class EventDetails(
+                           eventId: String,
+                           eventName: String,
+                           venue: String,
+                           organizer: String,
+                           cost: Double,
+                           maxTickets: Int,
+                           dateTime: String,
+                           duration: Int
+                         )
+
+  // Responses
+  sealed trait Response
+
+  object Response {
+    case class EventCreatedResponse(eventId: String) extends Response
+
+    case class EventUpdatedResponse(maybeEvent: Try[EventDetails]) extends Response
+
+    case class GetEventResponse(maybeEvent: Option[EventDetails]) extends Response
+  }
+
+  import Command._
+  import Response._
+
+  // Command handler
+  val commandHandler: (EventDetails, Command) => Effect[Event, EventDetails] = (state, command) =>
+    command match {
+      case CreateEvent(eventName, venue, organizer, cost, maxTickets, dateTime, duration, replyTo) =>
+        val eventId = java.util.UUID.randomUUID().toString
+        val eventDetails = EventDetails(eventId, eventName, venue, organizer, cost, maxTickets, dateTime, duration)
+        Effect
+          .persist(EventCreated(eventDetails))
+          .thenReply(replyTo)(_ => EventCreatedResponse(eventId))
+
+      case UpdateEvent(eventId, newCost, newVenue, replyTo) =>
+        Effect
+          .persist(EventUpdated(newCost, newVenue))
+          .thenReply(replyTo)(_ => EventUpdatedResponse(Success(state.copy(cost = newCost.getOrElse(state.cost), venue = newVenue.getOrElse(state.venue)))))
+
+      case GetEvent(_, replyTo) =>
+        Effect.reply(replyTo)(GetEventResponse(Some(state)))
+    }
+
+  // Event handler
+  val eventHandler: (EventDetails, Event) => EventDetails = (state, event) =>
+    event match {
+      case EventCreated(eventDetails) =>
+        eventDetails
+      case EventUpdated(newCost, newVenue) =>
+        state.copy(cost = newCost.getOrElse(state.cost), venue = newVenue.getOrElse(state.venue))
+    }
+
+  // Behavior definition
+  def apply(eventId: String): Behavior[Command] =
+    EventSourcedBehavior[Command, Event, EventDetails](
+      persistenceId = PersistenceId.ofUniqueId(eventId),
+      emptyState = EventDetails("", "", "", "", 0.0, 0, "", 0),
+      commandHandler = commandHandler,
+      eventHandler = eventHandler
+    )
 }
 
