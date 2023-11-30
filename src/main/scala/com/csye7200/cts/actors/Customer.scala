@@ -63,7 +63,7 @@ object Customer {
   def apply(customerID: String): Behavior[CustomerCommand] =
     EventSourcedBehavior[CustomerCommand, CustomerEvent, CustomerDetails](
       persistenceId = PersistenceId.ofUniqueId(customerID),
-      emptyState = CustomerDetails("", "", "", "", ""),
+      emptyState = CustomerDetails(customerID, "", "", "", ""),
       commandHandler = commandHandler,
       eventHandler = eventHandler
     )

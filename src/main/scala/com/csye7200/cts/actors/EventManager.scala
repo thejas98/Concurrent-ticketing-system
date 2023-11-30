@@ -91,7 +91,10 @@ object EventManagementPlayground {
 
       val responseHandler = context.spawn(Behaviors.receiveMessage[EventResponse] {
         case EventCreatedResponse(eventId) =>
-          logger.info(s"Successfully created event $eventId")
+          logger.info(s"Successfully created event - $eventId")
+          Behaviors.same
+        case EventUpdatedResponse(maybeEvent) =>
+          logger.info(s"Successfully Updated event - $maybeEvent")
           Behaviors.same
         case GetEventResponse(maybeEvent) =>
           logger.info(s"Event details: $maybeEvent")
@@ -109,10 +112,10 @@ object EventManagementPlayground {
       implicit val ec: ExecutionContext = context.executionContext
 
 //      eventManagement ! CreateEvent("Concert", "Arena A", "Music Corp", 50.0, 1000, "2023-12-15 19:00:00", 120, responseHandler)
-      eventManagement ! CreateEvent("Concert123", "Arena B", "Music Corpasdasd", 75.0, 2000, "2023-12-15 18:00:00", 320, responseHandler)
-
-
-      eventManagement ! GetAllEvents(responseHandler)
+//      eventManagement ! CreateEvent("Concert123", "Arena B", "Music Corpasdasd", 75.0, 2000, "2023-12-15 18:00:00", 320, responseHandler)
+      eventManagement ! UpdateEvent("EventID-c8e71781-9727-4329-8adf-3775267cbedf",-10,responseHandler)
+//
+      eventManagement ! GetEvent("EventID-c8e71781-9727-4329-8adf-3775267cbedf",responseHandler)
 
       Behaviors.empty
     }

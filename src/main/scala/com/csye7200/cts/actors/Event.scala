@@ -4,7 +4,6 @@ import akka.actor.typed.{ActorRef, Behavior}
 import akka.persistence.typed.PersistenceId
 import akka.persistence.typed.scaladsl.{Effect, EventSourcedBehavior}
 
-import scala.util.{Failure, Success, Try}
 
 object Event {
 
@@ -74,7 +73,7 @@ object Event {
       case UpdateEvent(_, newMaxTickets, replyTo) =>
         Effect
           .persist(EventUpdated(newMaxTickets))
-          .thenReply(replyTo)(_ => EventUpdatedResponse(Some(state)))
+          .thenReply(replyTo)(newState => EventUpdatedResponse(Some(newState)))
 
       case GetEvent(_, replyTo) =>
         Effect.reply(replyTo)(GetEventResponse(Some(state)))
@@ -87,14 +86,14 @@ object Event {
       case EventCreated(eventDetails) =>
         eventDetails
       case EventUpdated(newMaxTickets) =>
-        state.copy(maxTickets = newMaxTickets)
+        state.copy(maxTickets = state.maxTickets + newMaxTickets)
     }
 
   // Behavior definition
   def apply(eventId: String): Behavior[EventCommand] =
     EventSourcedBehavior[EventCommand, EventEvent, EventDetails](
       persistenceId = PersistenceId.ofUniqueId(eventId),
-      emptyState = EventDetails("", "", "", "", 0.0, 0, "", 0),
+      emptyState = EventDetails(eventId, "", "", "", 0.0, 0, "", 0),
       commandHandler = commandHandler,
       eventHandler = eventHandler
     )
