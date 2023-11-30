@@ -11,6 +11,7 @@ sbtVersion := "1.9.4"
 lazy val akkaVersion = "2.8.0"
 lazy val akkaHttpVersion = "10.2.8"
 lazy val circeVersion = "0.14.1"
+resolvers += "Akka library repository".at("https://repo.akka.io/maven")
 
 
 libraryDependencies ++= Seq(

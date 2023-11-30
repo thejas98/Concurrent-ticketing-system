@@ -3,7 +3,7 @@ import akka.actor.typed.ActorRef
 import akka.actor.typed.Scheduler
 import akka.actor.typed.scaladsl.AskPattern._
 import akka.util.Timeout
-import com.csye7200.cts.actors.{PersistentCustomer, PersistentEventManager}
+import com.csye7200.cts.actors.{CustomerManager, Event}
 import org.scalatest.wordspec.AnyWordSpecLike
 import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext
@@ -16,10 +16,10 @@ class EventAndCustomerIntegrationSpec extends ScalaTestWithActorTestKit with Any
   "An EventAndCustomerIntegrationSpec" must {
 
     "create an event, create a customer, and the customer actor gets event details" in {
-      val eventManager = testKit.spawn(PersistentEventManager("event-1"))
-      val customerActor = testKit.spawn(PersistentCustomer("customer-1"))
+      val eventManager = testKit.spawn(Event("event-1"))
+      val customerActor = testKit.spawn(CustomerManager("customer-1"))
 
-      val eventDetails = PersistentEventManager.EventDetails(
+      val eventDetails = Event.EventDetails(
         "event-1",
         "ScalaCon",
         "Convention Center",
@@ -30,7 +30,7 @@ class EventAndCustomerIntegrationSpec extends ScalaTestWithActorTestKit with Any
         240
       )
 
-      val createEventCommand = PersistentEventManager.Command.CreateEvent(
+      val createEventCommand = Event.Command.CreateEvent(
         eventDetails.eventName,
         eventDetails.venue,
         eventDetails.organizer,
@@ -38,36 +38,36 @@ class EventAndCustomerIntegrationSpec extends ScalaTestWithActorTestKit with Any
         eventDetails.maxTickets,
         eventDetails.dateTime,
         eventDetails.duration,
-        testKit.createTestProbe[PersistentEventManager.Response].ref
+        testKit.createTestProbe[Event.Response].ref
       )
 
       val eventCreatedResponse = testKit.ask(eventManager, createEventCommand).futureValue
 
-      eventCreatedResponse shouldBe a[PersistentEventManager.Response.EventCreatedResponse]
+      eventCreatedResponse shouldBe a[Event.Response.EventCreatedResponse]
 
-      val getEventCommand = PersistentEventManager.Command.GetEvent("event-1", testKit.createTestProbe[PersistentEventManager.Response].ref)
+      val getEventCommand = Event.Command.GetEvent("event-1", testKit.createTestProbe[Event.Response].ref)
       val eventDetailsResponse = testKit.ask(eventManager, getEventCommand).futureValue
 
-      eventDetailsResponse shouldBe PersistentEventManager.Response.GetEventResponse(Some(eventDetails))
+      eventDetailsResponse shouldBe Event.Response.GetEventResponse(Some(eventDetails))
 
-      val createCustomerCommand = PersistentCustomer.Command.CreateCustomer(
+      val createCustomerCommand = CustomerManager.Command.CreateCustomer(
         "John",
         "Doe",
         "john.doe@example.com",
         "+1234567890",
-        testKit.createTestProbe[PersistentCustomer.Response].ref
+        testKit.createTestProbe[CustomerManager.Response].ref
       )
 
       val customerCreatedResponse = testKit.ask(customerActor, createCustomerCommand).futureValue
 
-      customerCreatedResponse shouldBe a[PersistentCustomer.Response.CustomerCreatedResponse]
+      customerCreatedResponse shouldBe a[CustomerManager.Response.CustomerCreatedResponse]
 
-      val getCustomerCommand = PersistentCustomer.Command.GetCustomer("customer-1", testKit.createTestProbe[PersistentCustomer.Response].ref)
+      val getCustomerCommand = CustomerManager.Command.GetCustomer("customer-1", testKit.createTestProbe[CustomerManager.Response].ref)
       val customerDetailsResponse = testKit.ask(customerActor, getCustomerCommand).futureValue
 
-      customerDetailsResponse shouldBe PersistentCustomer.Response.GetCustomerResponse(
+      customerDetailsResponse shouldBe CustomerManager.Response.GetCustomerResponse(
         Some(
-          PersistentCustomer.CustomerDetails(
+          CustomerManager.CustomerDetails(
             "customer-1",
             "John",
             "Doe",

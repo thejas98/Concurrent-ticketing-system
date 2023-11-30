@@ -1,110 +1,101 @@
 package com.csye7200.cts.actors
 
-import akka.NotUsed
-import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
-import akka.actor.typed.{ActorRef, ActorSystem, Behavior, Scheduler}
+import akka.actor.typed.{ActorRef, Behavior}
 import akka.persistence.typed.PersistenceId
 import akka.persistence.typed.scaladsl.{Effect, EventSourcedBehavior}
-import akka.util.Timeout
-import com.csye7200.cts.actors.PersistentEventManager.EventDetails
 
-import java.util.UUID
-import scala.concurrent.ExecutionContext
-import scala.util.Failure
+import scala.util.{Failure, Success, Try}
 
-object EventManagement {
+object Event {
 
-  // commands = messages
-  import PersistentEventManager.Command._
-  import PersistentEventManager.Response._
-  import PersistentEventManager.Command
+  // Commands
+  trait Command
+  object Command {
+    case class CreateEvent(
+                            eventName: String,
+                            venue: String,
+                            organizer: String,
+                            cost: Double,
+                            maxTickets: Int,
+                            dateTime: String,
+                            duration: Int,
+                            replyTo: ActorRef[Response]
+                          ) extends Command
 
+    case class UpdateEvent(
+                            eventId: String,
+                            maxTickets: Int,
+                            replyTo: ActorRef[Response]
+                          ) extends Command
 
-  // events
+    case class GetEvent(eventId: String, replyTo: ActorRef[Response]) extends Command
+
+  }
+
+  // Events
   sealed trait Event
-  case class EventCreated(eventDetails: EventDetails) extends Event
+  case class EventCreated(event: EventDetails) extends Event
+  case class EventUpdated(maxTickets: Int) extends Event
 
-  // state
-  case class State(events: Map[String, ActorRef[Command]])
+  // State
+  case class EventDetails(
+                           eventId: String,
+                           eventName: String,
+                           venue: String,
+                           organizer: String,
+                           cost: Double,
+                           maxTickets: Int,
+                           dateTime: String,
+                           duration: Int
+                         )
 
-  // command handler
-  def commandHandler(context: ActorContext[Command]): (State, Command) => Effect[Event, State] = (state, command) =>
+  // Responses
+  trait Response
+  object Response {
+    case class EventCreatedResponse(eventId: String) extends Response
+    case class EventUpdatedResponse(maybeEvent: Option[EventDetails]) extends Response
+    case class GetEventResponse(maybeEvent: Option[EventDetails]) extends Response
+
+  }
+
+  import Command._
+  import Response._
+
+  // Command handler
+  val commandHandler: (EventDetails, Command) => Effect[Event, EventDetails] = (state, command) =>
     command match {
-      case createCommand @ CreateEvent(eventName, venue, organizer, cost, maxTickets, dateTime, duration, replyTo) =>
-        val eventId = UUID.randomUUID().toString
-        val newEvent = context.spawn(PersistentEventManager(eventId), eventId)
+      case CreateEvent(eventName, venue, organizer, cost, maxTickets, dateTime, duration, replyTo) =>
+        val eventId = state.eventId
+        val eventDetails = EventDetails(eventId, eventName, venue, organizer, cost, maxTickets, dateTime, duration)
         Effect
-          .persist(EventCreated(EventDetails(eventId, eventName, venue, organizer, cost, maxTickets, dateTime, duration)))
-          .thenReply(newEvent)(_ => createCommand)
-      case updateCmd @ UpdateEvent(eventId, newCost, newVenue, replyTo) =>
-        state.events.get(eventId) match {
-          case Some(event) =>
-            Effect.reply(event)(updateCmd)
-          case None =>
-            Effect.reply(replyTo)(EventUpdatedResponse(Failure(new RuntimeException("Event cannot be found"))))
-        }
-      case getCmd @ GetEvent(eventId, replyTo) =>
-        state.events.get(eventId) match {
-          case Some(event) =>
-            Effect.reply(event)(getCmd)
-          case None =>
-            Effect.reply(replyTo)(GetEventResponse(None))
-        }
+          .persist(EventCreated(eventDetails))
+          .thenReply(replyTo)(_ => EventCreatedResponse(eventId))
+
+      case UpdateEvent(_, newMaxTickets, replyTo) =>
+        Effect
+          .persist(EventUpdated(newMaxTickets))
+          .thenReply(replyTo)(_ => EventUpdatedResponse(Some(state)))
+
+      case GetEvent(_, replyTo) =>
+        Effect.reply(replyTo)(GetEventResponse(Some(state)))
+
     }
 
-  // event handler
-  def eventHandler(context: ActorContext[Command]): (State, Event) => State = (state, event) =>
+  // Event handler
+  val eventHandler: (EventDetails, Event) => EventDetails = (state, event) =>
     event match {
       case EventCreated(eventDetails) =>
-        val eventActor = context.child(eventDetails.eventId)
-          .getOrElse(context.spawn(PersistentEventManager(eventDetails.eventId), eventDetails.eventId))
-          .asInstanceOf[ActorRef[Command]]
-        state.copy(state.events + (eventDetails.eventId -> eventActor))
+        eventDetails
+      case EventUpdated(newMaxTickets) =>
+        state.copy(maxTickets = newMaxTickets)
     }
 
-  // behavior
-  def apply(): Behavior[Command] = Behaviors.setup { context =>
-    EventSourcedBehavior[Command, Event, State](
-      persistenceId = PersistenceId.ofUniqueId("event-management"),
-      emptyState = State(Map()),
-      commandHandler = commandHandler(context),
-      eventHandler = eventHandler(context)
+  // Behavior definition
+  def apply(eventId: String): Behavior[Command] =
+    EventSourcedBehavior[Command, Event, EventDetails](
+      persistenceId = PersistenceId.ofUniqueId(eventId),
+      emptyState = EventDetails("", "", "", "", 0.0, 0, "", 0),
+      commandHandler = commandHandler,
+      eventHandler = eventHandler
     )
-  }
-}
-
-object EventManagementPlayground {
-  import PersistentEventManager.Command._
-  import PersistentEventManager.Response._
-  import PersistentEventManager.Response
-
-  def main(args: Array[String]): Unit = {
-    val rootBehavior: Behavior[NotUsed] = Behaviors.setup { context =>
-      val eventManagement = context.spawn(EventManagement(), "eventManagement")
-      val logger = context.log
-
-      val responseHandler = context.spawn(Behaviors.receiveMessage[Response] {
-        case EventCreatedResponse(eventId) =>
-          logger.info(s"Successfully created event $eventId")
-          Behaviors.same
-        case GetEventResponse(maybeEvent) =>
-          logger.info(s"Event details: $maybeEvent")
-          Behaviors.same
-      }, "replyHandler")
-
-      // ask pattern
-      import akka.actor.typed.scaladsl.AskPattern._
-      import scala.concurrent.duration._
-      implicit val timeout: Timeout = Timeout(2.seconds)
-      implicit val scheduler: Scheduler = context.system.scheduler
-      implicit val ec: ExecutionContext = context.executionContext
-
-      eventManagement ! CreateEvent("Concert", "Arena A", "Music Corp", 50.0, 1000, "2023-12-15 19:00:00", 120, responseHandler)
-      eventManagement ! GetEvent("423d805e-0e70-4a58-9475-544efb2437ff", responseHandler)
-
-      Behaviors.empty
-    }
-
-    val system = ActorSystem(rootBehavior, "EventManagementDemo")
-  }
 }
