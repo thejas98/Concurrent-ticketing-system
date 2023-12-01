@@ -26,14 +26,14 @@ object TicketManagerActor {
   def commandHandler(context: ActorContext[TicketSellerCommand]): (State, TicketSellerCommand) => Effect[Event, State] = (state, command) => {
     println("state: " + state.tickets)
     command match {
-      case buyCommand @ BuyTicket(_, _, _, _) =>
+      case buyCommand@BuyTicket(_, _, _, _) =>
         val id = "BookingID-" + UUID.randomUUID().toString
         val newPurchase = context.spawn(TicketActor(id), id)
         Effect
           .persist(TicketsCreated(id))
           .thenReply(newPurchase)(_ => buyCommand)
 
-      case cancelCommand @ CancelTicket(ticketID, replyToTicketManager) =>
+      case cancelCommand@CancelTicket(ticketID, replyToTicketManager) =>
         state.tickets.get(ticketID) match {
           case Some(ticketActor) =>
             Effect.reply(ticketActor)(cancelCommand)
@@ -41,7 +41,7 @@ object TicketManagerActor {
             Effect.reply(replyToTicketManager)(GetTicketResponse(None))
         }
 
-      case getCommand @ GetTicket(ticketID, replyToCustomer) =>
+      case getCommand@GetTicket(ticketID, replyToCustomer) =>
         state.tickets.get(ticketID) match {
           case Some(ticketActor) =>
             Effect.reply(ticketActor)(getCommand)
@@ -71,6 +71,97 @@ object TicketManagerActor {
         eventHandler = eventHandler(context)
       )
     }
+  }
+}
+
+object TicketSellerPlayGround {
+
+  import TicketActor.TicketSellerCommand._
+  import TicketActor.TicketSellerResponse
+  import TicketActor.TicketSellerResponse._
+
+
+  import akka.NotUsed
+  import Event.EventResponse._
+  import Event.EventResponse
+  import Event.EventCommand._
+  import akka.actor.typed.ActorSystem
+
+  def main(args: Array[String]): Unit = {
+    val rootBehavior: Behavior[NotUsed] = Behaviors.setup { context =>
+
+      val eventManager = context.spawn(EventManager(), "Event-Manager")
+      val inventory = context.spawn(TicketManagerActor(), "Ticket-Manager")
+      val responseHandlerInventory = context.spawn(Behaviors.receiveMessage[TicketSellerResponse] {
+        case PurchaseResponse(tickets) =>
+        tickets match {
+          case Some(ticket) =>
+            println()
+            println("purchase  ticket id: " + ticket.ticketID + " " + ticket.ticketStatus)
+            println()
+            Behaviors.same
+          case None =>
+            println()
+            println("Ticket cannot be bought no such id")
+            println()
+            Behaviors.same
+        }
+
+        case CancellationResponse(tickets) =>
+          tickets match {
+            case Some(ticket) =>
+              println()
+              println("cancelled ticket id: " + ticket.ticketID)
+              println()
+              Behaviors.same
+            case None =>
+              println()
+              println("Ticket cannot be cancelled")
+              println()
+              Behaviors.same
+          }
+        case GetTicketResponse(maybeTicket) =>
+          maybeTicket match {
+            case Some(ticket) =>
+              println(s"someTickets is get ticket response: ${ticket.ticketStatus}")
+              Behaviors.same
+            case None =>
+              println("No tickets is get ticket response")
+              Behaviors.same
+          }
+      }, "replyHandlerInventory")
+
+      val responseHandler = context.spawn(Behaviors.receiveMessage[EventResponse] {
+        case EventCreatedResponse(eventId) =>
+          println("event created event ID:" + eventId)
+          Behaviors.same
+        case GetEventResponse(maybeEvent) =>
+          maybeEvent match {
+            case Some(event) =>
+              println()
+              println("get event Event Max Tickets: " + maybeEvent.get.eventName + " " + maybeEvent.get.maxTickets)
+              println()
+              Behaviors.same
+            case None =>
+              println("No event present")
+              Behaviors.same
+          }
+
+      }, "replyHandler")
+
+
+      // Testing eventmanagement
+            eventManager ! CreateEvent("Celtics Match", "Arena A", "Music Corp", 50.0, 1000, "2023-12-15 19:00:00", 120, responseHandler)
+      eventManager ! GetEvent("EventID-dbca9341-dbd6-402d-bd8b-02cef6997fcb", responseHandler)
+
+      //       test 1
+      inventory ! BuyTicket("EventID-dbca9341-dbd6-402d-bd8b-02cef6997fcb", 100, "Michael Jordan Testing23233234", responseHandlerInventory)
+      inventory ! GetTicket("BookingID-e4f3c517-be17-48b8-acce-fcf09f5fb5ea", responseHandlerInventory)
+//      inventory ! CancelTicket("BookingID-7c6ce924-31a3-448e-883c-a88da565e846", responseHandlerInventory)
+//      eventManager ! GetEvent("EventID-dbca9341-dbd6-402d-bd8b-02cef6997fcb", responseHandler)
+      Behaviors.empty
+    }
+    val system = ActorSystem(rootBehavior, "TicketSellerDemo")
   }
 }
 

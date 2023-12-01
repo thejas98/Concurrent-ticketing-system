@@ -75,35 +75,41 @@ object TicketActor {
         val result = Await.result(askGetEvent, timeout.duration)
         result match {
           case GetEventResponse(maybeEvent) =>
-            val availableTickets = maybeEvent.get.maxTickets
-            if (numOfTickets > availableTickets) {
-              val ticketStatus = "Unsuccessful"
-              Effect
-                .persist(TicketPurchased(TicketsState(id, eventId, numOfTickets, ticketStatus, customerID)))
-                .thenReply(ticketManager)(newState => PurchaseResponse(Some(newState)))
-            }
-            else {
-              val minusTickets = -numOfTickets
-              val eventManagerUpdate = context.spawn(EventManager(), "updateAvailability")
-              val updateEventResponse = eventManagerUpdate.ask(replyTo => UpdateEvent(eventId, minusTickets, replyTo))
-              updateEventResponse.map {
-                case EventUpdatedResponse(maybeEvent) =>
-                  maybeEvent.foreach {
-                    event =>
-                      println(event.eventId)
-                      println(event.eventName)
-                      println(event.maxTickets)
-                      println(event.venue)
+            maybeEvent match {
+              case Some(event) =>
+                val availableTickets = event.maxTickets
+                if (numOfTickets > availableTickets) {
+                  val ticketStatus = "Unsuccessful"
+                  Effect
+                    .persist(TicketPurchased(TicketsState(id, eventId, numOfTickets, ticketStatus, customerID)))
+                    .thenReply(ticketManager)(newState => PurchaseResponse(Some(newState)))
+                }
+                else {
+                  val minusTickets = -numOfTickets
+                  val eventManagerUpdate = context.spawn(EventManager(), "updateAvailability")
+                  val updateEventResponse = eventManagerUpdate.ask(replyTo => UpdateEvent(eventId, minusTickets, replyTo))
+                  updateEventResponse.map {
+                    case EventUpdatedResponse(maybeEvent) =>
+                      maybeEvent.foreach {
+                        event =>
+                          println(event.eventId)
+                          println(event.eventName)
+                          println(event.maxTickets)
+                          println(event.venue)
+                      }
                   }
-              }
-              val ticketStatus = "Successful"
-              Effect
-                .persist(TicketPurchased(TicketsState(id, eventId, numOfTickets, ticketStatus, customerID)))
-                .thenReply(ticketManager)(newState => PurchaseResponse(Some(newState)))
+                  val ticketStatus = "Successful"
+                  Effect
+                    .persist(TicketPurchased(TicketsState(id, eventId, numOfTickets, ticketStatus, customerID)))
+                    .thenReply(ticketManager)(newState => PurchaseResponse(Some(newState)))
+                }
+              /* when event is not present */
+              case None =>
+                val ticketStatus = "Unsuccessful"
+                Effect
+                  .persist(TicketPurchased(TicketsState(id, eventId, numOfTickets, ticketStatus, customerID)))
+                  .thenReply(ticketManager)(newState => PurchaseResponse(Some(newState)))
             }
-
-          /* when event is not present */
-          case GetEventResponse(None) => Effect.reply(ticketManager)(PurchaseResponse(None))
         }
 
       case GetTicket(ticketID, ticketManager) =>

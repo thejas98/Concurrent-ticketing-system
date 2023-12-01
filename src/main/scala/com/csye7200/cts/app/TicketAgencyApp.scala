@@ -6,13 +6,12 @@ import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
 import akka.actor.typed.scaladsl.Behaviors
 import akka.http.scaladsl.Http
 import akka.util.Timeout
-
 import com.csye7200.cts.actors.Event.EventCommand
 import com.csye7200.cts.actors.TicketActor.TicketSellerCommand
 import com.csye7200.cts.actors.{EventManager, TicketManagerActor}
 import com.csye7200.cts.http.TicketAgencyRouter
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration.DurationInt
 import scala.util.{Failure, Success}
 
@@ -56,21 +55,11 @@ object TicketAgencyApp {
     val eventManagerActorFuture: Future[ActorRef[EventCommand]] = system.ask(replyTo => RetrieveEventManagerActor(replyTo))
     val ticketManagerActorFuture: Future[ActorRef[TicketSellerCommand]] = system.ask(replyTo => RetrieveTicketManagerActor(replyTo))
 
+    val eventManagerActor = Await.result(eventManagerActorFuture, 5.seconds)
+    val ticketManagerActor = Await.result(ticketManagerActorFuture, 5.seconds)
 
+    startHttpServer(eventManagerActor, ticketManagerActor)
 
-    eventManagerActorFuture.foreach{
-      ticketManagerActorFuture.foreach{
-        startHttpServer()
-      }
-    }
-
-
-    Future.sequence(eventManagerActorFuture, ticketManagerActorFuture).foreach {
-      case Seq(eventManager, ticketManager) => startHttpServer(eventManager)
-      case _ =>
-        system.log.error("Failed to retrieve actors for HTTP server.")
-        system.terminate()
-    }
 
   }
 }
