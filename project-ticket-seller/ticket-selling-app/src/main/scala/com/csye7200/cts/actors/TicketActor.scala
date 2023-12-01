@@ -1,20 +1,17 @@
-package actors
+package com.csye7200.cts.actors
 
-import actors.Event.EventCommand._
-import actors.TicketActor.TicketSellerResponse.NoSuchTicketResponse
-import actors.TicketActor.TicketsState
-import akka.NotUsed
 import akka.actor.typed.scaladsl.AskPattern.Askable
 import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
-import akka.actor.typed.{ActorRef, ActorSystem, Behavior, Scheduler}
-import akka.persistence.Persistence
+import akka.actor.typed.{ActorRef, Behavior, Scheduler}
 import akka.persistence.typed.PersistenceId
 import akka.persistence.typed.scaladsl.{Effect, EventSourcedBehavior}
 import akka.util.Timeout
+import .EventCommand
+import .EventCommand._
+import .EventResponse._
+import .EventResponse
 
-import scala.concurrent.{Await, ExecutionContext, Future}
-import java.util.UUID
-import scala.util.{Failure, Success, Try}
+import scala.concurrent.{Await, ExecutionContext}
 
 object TicketActor {
   // Commands
@@ -25,7 +22,7 @@ object TicketActor {
 
     case class CancelTicket(ticketID: String, replyToTicketManager: ActorRef[TicketSellerResponse]) extends TicketSellerCommand
 
-    case class GetBookingReference()
+    case class GetTicket(ticketID: String, replyToTicketManager: ActorRef[TicketSellerResponse]) extends TicketSellerCommand
   }
 
   // Events
@@ -39,6 +36,9 @@ object TicketActor {
   sealed trait TicketSellerResponse
 
   object TicketSellerResponse {
+
+    case class GetTicketResponse(maybeTicket: Option[TicketsState]) extends TicketSellerResponse
+
     case class PurchaseResponse(tickets: Option[TicketsState]) extends TicketSellerResponse
 
     case class CancellationResponse(tickets: Option[TicketsState]) extends TicketSellerResponse
@@ -52,37 +52,34 @@ object TicketActor {
   // available tickets
   case class AvailableTickets(value: Int)
 
+  import TicketActor.TicketSellerCommand._
   import TicketActor.TicketSellerResponse._
-  import actors.TicketActor.TicketSellerCommand._
 
   // Command Handler
   // create booking id in command handler rather than apply method
+
   def commandHandler(context: ActorContext[TicketSellerCommand]): (TicketsState, TicketSellerCommand) => Effect[TicketSellerEvent, TicketsState] = (state, command) => {
 
-    import Event.EventCommand._
-    import Event.EventResponse
-    import Event.EventResponse._
     import scala.concurrent.duration._
     implicit val timeout: Timeout = Timeout(2.seconds)
     implicit val scheduler: Scheduler = context.system.scheduler
     implicit val ec: ExecutionContext = context.executionContext
 
     command match {
-      case BuyTicket(eventId, numOfTickets, customerID, inventory) =>
+
+      case BuyTicket(eventId, numOfTickets, customerID, ticketManager) =>
         val id = state.ticketID
         val eventManager = context.spawn(EventManager(), "checkAvailability")
         val askGetEvent = eventManager ? (replyTo => GetEvent(eventId, replyTo))
         val result = Await.result(askGetEvent, timeout.duration)
         result match {
           case GetEventResponse(maybeEvent) =>
-            println("getEventResponse during availability checking: " + maybeEvent.get.venue)
             val availableTickets = maybeEvent.get.maxTickets
             if (numOfTickets > availableTickets) {
-              println(availableTickets)
               val ticketStatus = "Unsuccessful"
               Effect
                 .persist(TicketPurchased(TicketsState(id, eventId, numOfTickets, ticketStatus, customerID)))
-                .thenReply(inventory)(newState => PurchaseResponse(Some(newState)))
+                .thenReply(ticketManager)(newState => PurchaseResponse(Some(newState)))
             }
             else {
               val minusTickets = -numOfTickets
@@ -98,31 +95,37 @@ object TicketActor {
                       println(event.venue)
                   }
               }
-              println("inside else condition")
               val ticketStatus = "Successful"
               Effect
                 .persist(TicketPurchased(TicketsState(id, eventId, numOfTickets, ticketStatus, customerID)))
-                .thenReply(inventory)(newState => PurchaseResponse(Some(newState)))
+                .thenReply(ticketManager)(newState => PurchaseResponse(Some(newState)))
             }
-          /* when await exceeds the time limit it won't return a value */
-          case GetEventResponse(None) => Effect.reply(inventory)(PurchaseResponse(None))
+
+          /* when event is not present */
+          case GetEventResponse(None) => Effect.reply(ticketManager)(PurchaseResponse(None))
         }
 
-      case CancelTicket(ticketID, inventory) =>
+      case GetTicket(ticketID, ticketManager) =>
+        Effect.reply(ticketManager)(GetTicketResponse(Some(state)))
+
+      case CancelTicket(ticketID, ticketManager) =>
         val ticket_curr_status = state.ticketStatus
         ticket_curr_status match {
+
           case "Successful" =>
             val eventManagerUpdate = context.spawn(EventManager(), "updateAvailability")
             eventManagerUpdate.ask(replyTo => UpdateEvent(state.eventID, state.numberOfTickets, replyTo))
             Effect
               .persist(TicketCancelled("Cancelled"))
-              .thenReply(inventory)(newState => CancellationResponse(Some(newState)))
+              .thenReply(ticketManager)(newState => CancellationResponse(Some(newState)))
+
           case "Unsuccessful" =>
             Effect
-              .reply(inventory)(CancellationResponse(None))
+              .reply(ticketManager)(CancellationResponse(None))
+
           case "Cancelled" =>
             Effect
-              .reply(inventory)(CancellationResponse(None))
+              .reply(ticketManager)(CancellationResponse(None))
         }
     }
   }
@@ -130,9 +133,10 @@ object TicketActor {
   def eventHandler(context: ActorContext[TicketSellerCommand]): (TicketsState, TicketSellerEvent) => TicketsState = (state, event) => {
 
     event match {
+
       case TicketPurchased(ticketsState) =>
-        println("event Handler")
         ticketsState
+
       case TicketCancelled(change_status) =>
         state.copy(ticketStatus = change_status)
     }
@@ -143,7 +147,6 @@ object TicketActor {
     context => {
 
       // EVENTSOURCEDBEHAVIOR - IDEA PERCEIVED FROM ROCK THE JVM
-
       EventSourcedBehavior[TicketSellerCommand, TicketSellerEvent, TicketsState](
         persistenceId = PersistenceId.ofUniqueId(ticketID),
         emptyState = TicketsState(ticketID, "", 0, "", ""),

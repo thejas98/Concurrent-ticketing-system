@@ -1,15 +1,13 @@
-package app
+package com.csye7200.cts.app
 
-import actors.{TicketManagerActor}
-import app.Event.EventCommand
-import actors.TicketActor.TicketSellerCommand
 import akka.NotUsed
 import akka.actor.typed.scaladsl.AskPattern.{Askable, schedulerFromActorSystem}
 import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
 import akka.actor.typed.scaladsl.Behaviors
 import akka.http.scaladsl.Http
 import akka.util.Timeout
-import http.TicketAgencyRouter
+import com.csye7200.cts.actors.TicketManagerActor
+import com.csye7200.cts.http.TicketAgencyRouter
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.DurationInt
