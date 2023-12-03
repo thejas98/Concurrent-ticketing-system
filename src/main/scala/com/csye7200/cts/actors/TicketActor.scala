@@ -112,10 +112,10 @@ object TicketActor {
             }
         }
 
-      case GetTicket(ticketID, ticketManager) =>
+      case GetTicket(_, ticketManager) =>
         Effect.reply(ticketManager)(GetTicketResponse(Some(state)))
 
-      case CancelTicket(ticketID, ticketManager) =>
+      case CancelTicket(_, ticketManager) =>
         val ticket_curr_status = state.ticketStatus
         ticket_curr_status match {
 
