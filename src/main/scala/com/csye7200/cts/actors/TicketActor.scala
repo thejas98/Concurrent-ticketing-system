@@ -6,11 +6,9 @@ import akka.actor.typed.{ActorRef, Behavior, Scheduler}
 import akka.persistence.typed.PersistenceId
 import akka.persistence.typed.scaladsl.{Effect, EventSourcedBehavior}
 import akka.util.Timeout
-
-
+import com.csye7200.cts.actors.Event.EventCommand
 import com.csye7200.cts.actors.Event.EventCommand._
 import com.csye7200.cts.actors.Event.EventResponse._
-
 
 import scala.concurrent.{Await, ExecutionContext}
 
@@ -19,9 +17,9 @@ object TicketActor {
   sealed trait TicketSellerCommand
 
   object TicketSellerCommand {
-    case class BuyTicket(eventId: String, numOfTickets: Int, customerID: String, replyToTicketManager: ActorRef[TicketSellerResponse]) extends TicketSellerCommand
+    case class BuyTicket(eventManager: ActorRef[EventCommand], eventId: String, numOfTickets: Int, customerID: String, replyToTicketManager: ActorRef[TicketSellerResponse]) extends TicketSellerCommand
 
-    case class CancelTicket(ticketID: String, replyToTicketManager: ActorRef[TicketSellerResponse]) extends TicketSellerCommand
+    case class CancelTicket(eventManager: ActorRef[EventCommand], ticketID: String, replyToTicketManager: ActorRef[TicketSellerResponse]) extends TicketSellerCommand
 
     case class GetTicket(ticketID: String, replyToTicketManager: ActorRef[TicketSellerResponse]) extends TicketSellerCommand
   }
@@ -44,7 +42,6 @@ object TicketActor {
 
     case class CancellationResponse(tickets: Option[TicketsState]) extends TicketSellerResponse
 
-    case class NoSuchTicketResponse(tickets: Option[TicketsState]) extends TicketSellerResponse
   }
 
   // State
@@ -62,23 +59,25 @@ object TicketActor {
   def commandHandler(context: ActorContext[TicketSellerCommand]): (TicketsState, TicketSellerCommand) => Effect[TicketSellerEvent, TicketsState] = (state, command) => {
 
     import scala.concurrent.duration._
-    implicit val timeout: Timeout = Timeout(2.seconds)
+    implicit val timeout: Timeout = Timeout(10.seconds)
     implicit val scheduler: Scheduler = context.system.scheduler
     implicit val ec: ExecutionContext = context.executionContext
 
     command match {
 
-      case BuyTicket(eventId, numOfTickets, customerID, ticketManager) =>
+      case BuyTicket(eventManager, eventId, numOfTickets, customerID, ticketManager) =>
         val id = state.ticketID
-        val eventManager = context.spawn(EventManager(), "checkAvailability")
+        println("eventManager:" + eventManager)
         val askGetEvent = eventManager ? (replyTo => GetEvent(eventId, replyTo))
         val result = Await.result(askGetEvent, timeout.duration)
         result match {
+
           case GetEventResponse(maybeEvent) =>
             maybeEvent match {
               case Some(event) =>
+                println("event available")
                 val availableTickets = event.maxTickets
-                if (numOfTickets > availableTickets) {
+                if (numOfTickets > availableTickets || numOfTickets > 20) {
                   val ticketStatus = "Unsuccessful"
                   Effect
                     .persist(TicketPurchased(TicketsState(id, eventId, numOfTickets, ticketStatus, customerID)))
@@ -86,8 +85,7 @@ object TicketActor {
                 }
                 else {
                   val minusTickets = -numOfTickets
-                  val eventManagerUpdate = context.spawn(EventManager(), "updateAvailability")
-                  val updateEventResponse = eventManagerUpdate.ask(replyTo => UpdateEvent(eventId, minusTickets, replyTo))
+                  val updateEventResponse = eventManager ? (replyTo => UpdateEvent(eventId, minusTickets, replyTo))
                   updateEventResponse.map {
                     case EventUpdatedResponse(maybeEvent) =>
                       maybeEvent.foreach {
@@ -98,6 +96,8 @@ object TicketActor {
                           println(event.venue)
                       }
                   }
+                  println()
+
                   val ticketStatus = "Successful"
                   Effect
                     .persist(TicketPurchased(TicketsState(id, eventId, numOfTickets, ticketStatus, customerID)))
@@ -105,7 +105,8 @@ object TicketActor {
                 }
               /* when event is not present */
               case None =>
-                val ticketStatus = "Unsuccessful"
+                println("no such event")
+                val ticketStatus = "Event-Unavailable"
                 Effect
                   .persist(TicketPurchased(TicketsState(id, eventId, numOfTickets, ticketStatus, customerID)))
                   .thenReply(ticketManager)(newState => PurchaseResponse(Some(newState)))
@@ -115,13 +116,12 @@ object TicketActor {
       case GetTicket(_, ticketManager) =>
         Effect.reply(ticketManager)(GetTicketResponse(Some(state)))
 
-      case CancelTicket(_, ticketManager) =>
+      case CancelTicket(eventManager,_, ticketManager) =>
         val ticket_curr_status = state.ticketStatus
         ticket_curr_status match {
 
           case "Successful" =>
-            val eventManagerUpdate = context.spawn(EventManager(), "updateAvailability")
-            eventManagerUpdate.ask(replyTo => UpdateEvent(state.eventID, state.numberOfTickets, replyTo))
+            eventManager.ask(replyTo => UpdateEvent(state.eventID, state.numberOfTickets, replyTo))
             Effect
               .persist(TicketCancelled("Cancelled"))
               .thenReply(ticketManager)(newState => CancellationResponse(Some(newState)))
@@ -131,6 +131,10 @@ object TicketActor {
               .reply(ticketManager)(CancellationResponse(None))
 
           case "Cancelled" =>
+            Effect
+              .reply(ticketManager)(CancellationResponse(None))
+
+          case "Event-Unavailable" =>
             Effect
               .reply(ticketManager)(CancellationResponse(None))
         }

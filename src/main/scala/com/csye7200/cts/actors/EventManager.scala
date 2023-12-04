@@ -28,6 +28,8 @@ object EventManager {
   // events
   sealed trait Event
   case class EventCreated(eventID: String) extends Event
+  case class EventUpdated(eventID: String) extends Event
+
   // state
   case class State(events: Map[String, ActorRef[EventCommand]])
 
@@ -43,11 +45,13 @@ object EventManager {
       case updateCmd @ UpdateEvent(eventId, newMaxTickets, replyTo) =>
         state.events.get(eventId) match {
           case Some(event) =>
-            Effect.reply(event)(updateCmd)
+            Effect
+              .reply(event)(updateCmd)
         }
       case getCmd @ GetEvent(eventId, replyTo) =>
         state.events.get(eventId) match {
           case Some(event) =>
+            println("event: " + event)
             Effect.reply(event)(getCmd)
           case None =>
             Effect.reply(replyTo)(GetEventResponse(None))
@@ -65,6 +69,10 @@ object EventManager {
           .getOrElse(context.spawn(Event(eventId), eventId))
           .asInstanceOf[ActorRef[EventCommand]]
         state.copy(state.events + (eventId -> eventActor))
+//      case EventUpdated(eventId) =>
+//        val eventActor = context.child(eventId)
+//          .asInstanceOf[ActorRef[EventCommand]]
+//        state.copy(state.events + (eventId -> eventActor))
     }
 
   // behavior
@@ -78,48 +86,3 @@ object EventManager {
   }
 }
 
-object EventManagementPlayground {
-  import Event.EventCommand._
-  import Event.EventResponse._
-  import Event.EventResponse
-  import EventManager.GetAllEventsResponse
-  import EventManager.GetAllEvents
-  def main(args: Array[String]): Unit = {
-    val rootBehavior: Behavior[NotUsed] = Behaviors.setup { context =>
-      val eventManagement = context.spawn(EventManager(), "eventManagement")
-      val logger = context.log
-
-      val responseHandler = context.spawn(Behaviors.receiveMessage[EventResponse] {
-        case EventCreatedResponse(eventId) =>
-          logger.info(s"Successfully created event - $eventId")
-          Behaviors.same
-        case EventUpdatedResponse(maybeEvent) =>
-          logger.info(s"Successfully Updated event - $maybeEvent")
-          Behaviors.same
-        case GetEventResponse(maybeEvent) =>
-          logger.info(s"Event details: $maybeEvent")
-          Behaviors.same
-        case GetAllEventsResponse(allEvents) =>
-          logger.info(s"All Events: $allEvents")
-          Behaviors.same
-      }, "replyHandler")
-
-      // ask pattern
-      import akka.actor.typed.scaladsl.AskPattern._
-      import scala.concurrent.duration._
-      implicit val timeout: Timeout = Timeout(2.seconds)
-      implicit val scheduler: Scheduler = context.system.scheduler
-      implicit val ec: ExecutionContext = context.executionContext
-
-//      eventManagement ! CreateEvent("Concert", "Arena A", "Music Corp", 50.0, 1000, "2023-12-15 19:00:00", 120, responseHandler)
-//      eventManagement ! CreateEvent("Concert123", "Arena B", "Music Corpasdasd", 75.0, 2000, "2023-12-15 18:00:00", 320, responseHandler)
-      eventManagement ! UpdateEvent("EventID-c8e71781-9727-4329-8adf-3775267cbedf",-10,responseHandler)
-//
-      eventManagement ! GetEvent("EventID-c8e71781-9727-4329-8adf-3775267cbedf",responseHandler)
-
-      Behaviors.empty
-    }
-
-    val system = ActorSystem(rootBehavior, "EventManagementDemo")
-  }
-}

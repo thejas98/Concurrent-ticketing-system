@@ -29,12 +29,15 @@ object Event {
 
     case class GetEvent(eventId: String, replyTo: ActorRef[EventResponse]) extends EventCommand
 
+
+
   }
 
   // Events
   sealed trait EventEvent
   case class EventCreated(event: EventDetails) extends EventEvent
   case class EventUpdated(maxTickets: Int) extends EventEvent
+  case class EventFetched() extends EventEvent
 
   // State
   case class EventDetails(
@@ -62,6 +65,7 @@ object Event {
 
   // Command handler
   val commandHandler: (EventDetails, EventCommand) => Effect[EventEvent, EventDetails] = (state, command) =>
+
     command match {
       case CreateEvent(eventName, venue, organizer, cost, maxTickets, dateTime, duration, replyTo) =>
         val eventId = state.eventId
@@ -71,12 +75,15 @@ object Event {
           .thenReply(replyTo)(_ => EventCreatedResponse(eventId))
 
       case UpdateEvent(_, newMaxTickets, replyTo) =>
+        println("state of update: " + state.maxTickets)
         Effect
           .persist(EventUpdated(newMaxTickets))
           .thenReply(replyTo)(newState => EventUpdatedResponse(Some(newState)))
 
       case GetEvent(_, replyTo) =>
-        Effect.reply(replyTo)(GetEventResponse(Some(state)))
+        println("eventID: " + state.eventId + " max tickets in get event: " +state.maxTickets)
+        Effect
+          .reply(replyTo)(GetEventResponse(Some(state)))
 
     }
 
@@ -87,6 +94,8 @@ object Event {
         eventDetails
       case EventUpdated(newMaxTickets) =>
         state.copy(maxTickets = state.maxTickets + newMaxTickets)
+      case EventFetched() =>
+        state.copy(maxTickets = state.maxTickets)
     }
 
   // Behavior definition
