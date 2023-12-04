@@ -47,6 +47,8 @@ object EventManager {
           case Some(event) =>
             Effect
               .reply(event)(updateCmd)
+          case None =>
+            Effect.reply(replyTo)(EventUpdatedResponse(None))
         }
       case getCmd @ GetEvent(eventId, replyTo) =>
         state.events.get(eventId) match {
