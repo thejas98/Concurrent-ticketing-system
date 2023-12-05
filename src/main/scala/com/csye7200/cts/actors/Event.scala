@@ -37,7 +37,6 @@ object Event {
   sealed trait EventEvent
   case class EventCreated(event: EventDetails) extends EventEvent
   case class EventUpdated(maxTickets: Int) extends EventEvent
-  case class EventFetched() extends EventEvent
 
   // State
   case class EventDetails(
@@ -94,8 +93,7 @@ object Event {
         eventDetails
       case EventUpdated(newMaxTickets) =>
         state.copy(maxTickets = state.maxTickets + newMaxTickets)
-      case EventFetched() =>
-        state.copy(maxTickets = state.maxTickets)
+
     }
 
   // Behavior definition
