@@ -48,7 +48,6 @@ object Customer {
 
       case GetCustomer(_, replyTo) =>
         Effect.reply(replyTo)(GetCustomerResponse(Some(state)))
-
     }
 
   // Event handler

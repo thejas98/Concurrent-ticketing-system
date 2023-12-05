@@ -9,6 +9,7 @@ object Event {
 
   // Commands
   trait EventCommand
+
   object EventCommand {
     case class CreateEvent(
                             eventName: String,
@@ -30,13 +31,15 @@ object Event {
     case class GetEvent(eventId: String, replyTo: ActorRef[EventResponse]) extends EventCommand
 
 
-
   }
 
   // Events
   sealed trait EventEvent
+
   case class EventCreated(event: EventDetails) extends EventEvent
+
   case class EventUpdated(maxTickets: Int) extends EventEvent
+
   case class EventFetched() extends EventEvent
 
   // State
@@ -53,9 +56,12 @@ object Event {
 
   // Responses
   trait EventResponse
+
   object EventResponse {
     case class EventCreatedResponse(eventId: String) extends EventResponse
+
     case class EventUpdatedResponse(maybeEvent: Option[EventDetails]) extends EventResponse
+
     case class GetEventResponse(maybeEvent: Option[EventDetails]) extends EventResponse
 
   }
@@ -81,10 +87,9 @@ object Event {
           .thenReply(replyTo)(newState => EventUpdatedResponse(Some(newState)))
 
       case GetEvent(_, replyTo) =>
-        println("eventID: " + state.eventId + " max tickets in get event: " +state.maxTickets)
+        println("eventID: " + state.eventId + " max tickets in get event: " + state.maxTickets)
         Effect
           .reply(replyTo)(GetEventResponse(Some(state)))
-
     }
 
   // Event handler
@@ -94,8 +99,6 @@ object Event {
         eventDetails
       case EventUpdated(newMaxTickets) =>
         state.copy(maxTickets = state.maxTickets + newMaxTickets)
-      case EventFetched() =>
-        state.copy(maxTickets = state.maxTickets)
     }
 
   // Behavior definition

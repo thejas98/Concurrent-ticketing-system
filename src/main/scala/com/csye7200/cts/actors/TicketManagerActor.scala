@@ -1,17 +1,22 @@
 package com.csye7200.cts.actors
 
 
+import akka.actor.typed.scaladsl.AskPattern.Askable
 import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
-import akka.actor.typed.{ActorRef, Behavior}
+import akka.actor.typed.{ActorRef, Behavior, Scheduler}
 import akka.persistence.typed.PersistenceId
 import akka.persistence.typed.scaladsl.{Effect, EventSourcedBehavior}
-
+import akka.util.Timeout
+import com.csye7200.cts.actors.Customer.CustomerCommand.GetCustomer
+import com.csye7200.cts.actors.Customer.CustomerResponse.GetCustomerResponse
+import com.csye7200.cts.actors.Event.EventCommand.GetEvent
+import com.csye7200.cts.actors.Event.EventResponse.GetEventResponse
 import com.csye7200.cts.actors.TicketActor.TicketSellerCommand
 import com.csye7200.cts.actors.TicketActor.TicketSellerCommand._
 import com.csye7200.cts.actors.TicketActor.TicketSellerResponse._
 
-
 import java.util.UUID
+import scala.concurrent.{Await, ExecutionContext}
 
 object TicketManagerActor {
 
@@ -24,16 +29,48 @@ object TicketManagerActor {
   case class State(tickets: Map[String, ActorRef[TicketSellerCommand]])
 
   def commandHandler(context: ActorContext[TicketSellerCommand]): (State, TicketSellerCommand) => Effect[Event, State] = (state, command) => {
-    println("state: " + state.tickets)
-    command match {
-      case buyCommand@BuyTicket(_,_, _, _, _) =>
-        val id = "BookingID-" + UUID.randomUUID().toString
-        val newPurchase = context.spawn(TicketActor(id), id)
-        Effect
-          .persist(TicketsCreated(id))
-          .thenReply(newPurchase)(_ => buyCommand)
+    import scala.concurrent.duration._
+    implicit val timeout: Timeout = Timeout(10.seconds)
+    implicit val scheduler: Scheduler = context.system.scheduler
+    implicit val ec: ExecutionContext = context.executionContext
 
-      case cancelCommand@CancelTicket(_,ticketID, replyToTicketManager) =>
+    command match {
+      case buyCommand@BuyTicket(eventManager, customerManager, eventId, numOfTickets, customerID, replyToTicketManager) =>
+        val checkCustomer = customerManager ? (replyTo => GetCustomer(customerID, replyTo))
+        val checkCustomerResult = Await.result(checkCustomer, timeout.duration)
+        checkCustomerResult match {
+          case GetCustomerResponse(maybeCustomer) =>
+            maybeCustomer match {
+              case Some(customer) =>
+                val askGetEvent = eventManager ? (replyTo => GetEvent(eventId, replyTo))
+                val getEventResult = Await.result(askGetEvent, timeout.duration)
+                getEventResult match {
+                  case GetEventResponse(maybeEvent) =>
+                    maybeEvent match {
+                      case Some(event) =>
+                        val availableTickets = event.maxTickets
+                        (numOfTickets < availableTickets, numOfTickets < 20) match {
+                          case (true, true) =>
+                            val id = "BookingID-" + UUID.randomUUID().toString
+                            val newPurchase = context.spawn(TicketActor(id), id)
+                            Effect
+                              .persist(TicketsCreated(id))
+                              .thenReply(newPurchase)(_ => buyCommand)
+                          case _ =>
+                            Effect
+                              .reply(replyToTicketManager)(PurchaseResponse(None))
+                        }
+                      case None =>
+                        Effect
+                          .reply(replyToTicketManager)(NoEventResponse(None))
+                    }
+                }
+              case None =>
+                Effect.reply(replyToTicketManager)(NoCustomerResponse(None))
+            }
+        }
+
+      case cancelCommand@CancelTicket(_, ticketID, replyToTicketManager) =>
         state.tickets.get(ticketID) match {
           case Some(ticketActor) =>
             Effect.reply(ticketActor)(cancelCommand)

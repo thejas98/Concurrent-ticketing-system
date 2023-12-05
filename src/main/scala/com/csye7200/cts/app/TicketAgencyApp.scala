@@ -33,6 +33,7 @@ object TicketAgencyApp {
         system.terminate()
     }
   }
+
   def main(args: Array[String]): Unit = {
     trait RootCommand
     case class RetrieveEventManagerActor(replyTo: ActorRef[ActorRef[EventCommand]]) extends RootCommand
@@ -41,8 +42,8 @@ object TicketAgencyApp {
 
     val rootBehavior: Behavior[RootCommand] = Behaviors.setup { context =>
       val eventManagerActor = context.spawn(EventManager(), "Event-Manager")
-      val ticketManagerActor = context.spawn(TicketManagerActor(), name="Ticket-Manager")
-      val customerManagerActor = context.spawn(CustomerManager(), name="Customer-Manager")
+      val ticketManagerActor = context.spawn(TicketManagerActor(), name = "Ticket-Manager")
+      val customerManagerActor = context.spawn(CustomerManager(), name = "Customer-Manager")
 
       Behaviors.receiveMessage {
         case RetrieveEventManagerActor(replyTo) =>
@@ -64,14 +65,14 @@ object TicketAgencyApp {
     val ticketManagerActorFuture: Future[ActorRef[TicketSellerCommand]] = system.ask(replyTo => RetrieveTicketManagerActor(replyTo))
     val customerManagerActorFuture: Future[ActorRef[CustomerCommand]] = system.ask(replyTo => RetrieveCustomerManagerActor(replyTo))
 
-//    val eventManagerActor = Await.result(eventManagerActorFuture, 5.seconds)
-//    val ticketManagerActor = Await.result(ticketManagerActorFuture, 5.seconds)
-//    val customerManagerActor = Await.result(customerManagerActorFuture, 5.seconds)
+    //    val eventManagerActor = Await.result(eventManagerActorFuture, 5.seconds)
+    //    val ticketManagerActor = Await.result(ticketManagerActorFuture, 5.seconds)
+    //    val customerManagerActor = Await.result(customerManagerActorFuture, 5.seconds)
     import scala.concurrent.ExecutionContext.Implicits.global
 
     val allFutures: Seq[Future[Any]] = Seq(eventManagerActorFuture, ticketManagerActorFuture, customerManagerActorFuture)
     val futureResult = Future.sequence(allFutures)
-    futureResult.onComplete{
+    futureResult.onComplete {
       case Success(futureResults) =>
         val eventManagerActor = futureResults(0).asInstanceOf[ActorRef[EventCommand]]
         val ticketManagerActor = futureResults(1).asInstanceOf[ActorRef[TicketSellerCommand]]
@@ -82,7 +83,6 @@ object TicketAgencyApp {
       case Failure(exception) =>
         println(s"$exception: Failed to start http server")
     }
-
 
 
   }
