@@ -17,7 +17,7 @@ import scala.concurrent.{Await, ExecutionContext}
 
 object TicketActor {
   // Commands
-  sealed trait TicketSellerCommand
+  trait TicketSellerCommand
 
   object TicketSellerCommand {
     case class BuyTicket(eventManager: ActorRef[EventCommand], customerManager: ActorRef[CustomerCommand], eventId: String, numOfTickets: Int, customerID: String, replyToTicketManager: ActorRef[TicketSellerResponse]) extends TicketSellerCommand
@@ -35,7 +35,7 @@ object TicketActor {
   case class TicketCancelled(changeStatus: String) extends TicketSellerEvent
 
   // Responses
-  sealed trait TicketSellerResponse
+  trait TicketSellerResponse
 
   object TicketSellerResponse {
 
@@ -67,7 +67,7 @@ object TicketActor {
   def commandHandler(context: ActorContext[TicketSellerCommand]): (TicketsState, TicketSellerCommand) => Effect[TicketSellerEvent, TicketsState] = (state, command) => {
 
     import scala.concurrent.duration._
-    implicit val timeout: Timeout = Timeout(10.seconds)
+    implicit val timeout: Timeout = Timeout(2.seconds)
     implicit val scheduler: Scheduler = context.system.scheduler
     implicit val ec: ExecutionContext = context.executionContext
 

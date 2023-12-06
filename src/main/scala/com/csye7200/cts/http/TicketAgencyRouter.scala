@@ -22,6 +22,7 @@ import com.csye7200.cts.actors.Event.EventResponse.{EventCreatedResponse, EventU
 import com.csye7200.cts.actors.EventManager.{GetAllEvents, GetAllEventsResponse}
 import com.csye7200.cts.actors.TicketActor.TicketSellerCommand.{BuyTicket, CancelTicket, GetTicket}
 import com.csye7200.cts.actors.TicketActor.TicketSellerResponse.{CancellationResponse, GetTicketResponse, NoCustomerResponse, NoEventResponse, PurchaseResponse}
+import com.csye7200.cts.actors.TicketManagerActor.{GetAllTicketsForCustomer, GetAllTicketsForCustomerResponse}
 
 import javax.naming.ldap.Control
 import scala.concurrent.Future
@@ -47,7 +48,7 @@ case class FailureResponse(reason: String)
 
 class TicketAgencyRouter(eventManager: ActorRef[EventCommand], ticketManager: ActorRef[TicketSellerCommand], customerManager: ActorRef[CustomerCommand])(implicit system: ActorSystem[_]) {
 
-  implicit val timeout: Timeout = Timeout(5.seconds)
+  implicit val timeout: Timeout = Timeout(2.seconds)
 
   // Transform event requests to commands
   def createEventRequest(request: EventCreationRequest): Future[EventResponse] =
@@ -82,6 +83,9 @@ class TicketAgencyRouter(eventManager: ActorRef[EventCommand], ticketManager: Ac
 
   def getEvents(): Future[EventResponse] =
     eventManager.ask(replyTo => GetAllEvents(replyTo))
+
+  def getTickets(customerID: String): Future[TicketSellerResponse] =
+    ticketManager.ask(replyTo => GetAllTicketsForCustomer(customerID, replyTo))
 
 
   val routes =
@@ -243,6 +247,19 @@ class TicketAgencyRouter(eventManager: ActorRef[EventCommand], ticketManager: Ac
               case _ => complete(events)
             }
         }
+      }
+    } ~ pathPrefix("tickets") {
+      path(Segment) {
+        customerID =>
+          get {
+            onSuccess(getTickets(customerID)) {
+              case GetAllTicketsForCustomerResponse(tickets) =>
+                tickets match {
+                  case Nil => complete(StatusCodes.NotFound, FailureResponse("Events coming soon. Check back later!"))
+                  case _ => complete(tickets)
+                }
+            }
+          }
       }
     }
 }
