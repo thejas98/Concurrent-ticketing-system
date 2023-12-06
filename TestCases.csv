@@ -1,0 +1,26 @@
+Test Case Id,Test Case Name,Test Case Description,Steps to Reproduce,Expected Result
+TC001,Create Event,Verify that the system allows the creation of a new event,"1. Send a POST request to create a new event.
+2. Provide valid event details in the request body.",The system should respond with a status code of 201
+TC002,Get Event Details,Verify that the system retrieves event details correctly,"1. Send a POST request to create an event and store its ID
+2. Send a GET request with a valid event ID.",The system should respond with a status code of 200 and return the details of the specified event.
+TC003,Purchase Ticket,Verify that users can purchase tickets for an event,"1. Send a POST request to customer, Event to get their IDS
+2. Send a POST request to purchase tickets.
+3. Provide valid event ID, number of tickets, and customer ID in the request body.",The system should respond with a status code of 201
+TC004,Get Ticket Details,Verify that the system retrieves ticket details correctly,"1. Send a POST request to customer, Event to get their IDS
+2. Send a POST request to purchase tickets.
+3. Provide valid event ID, number of tickets, and customer ID in the request body and store the ticket id
+4. Send a GET ticket request with a valid ticket ID.",The system should respond with a status code of 200 and return the details of the specified ticket.
+TC005,Cancel Ticket,Verify that users can cancel their ticket,"1. Send a POST request to customer, Event to get their IDS
+2. Send a POST request to purchase tickets.
+3. Provide valid event ID, number of tickets, and customer ID in the request body and store the ticket id
+4. Send a PUT request to cancel a ticket with a valid ticket ID.",The system should respond with a status code of 200
+TC006,Create a new Customer,Verify that the system allows the creation of a new customer,"1. Send a POST request to create a new customer.
+2. Provide valid customer details in the request body.",The system should respond with a status code of 201
+TC007,Get Customer Details,Verify that the system retrieves customer details correctly,"1. Send a POST request to create an customer and store its ID
+2. Send a GET request with a valid customer ID.",The system should respond with a status code of 200 and return the details of the specified customer.
+TC008,Get All Customers,Verify that the system retrieves a list of all customers,1. Send a GET request to get all customers.,The system should respond with a status code of 200 and return a list of all registered customers.
+TC009,Get All Events,Verify that the system retrieves a list of all events,1. Send a GET request to get all events.,The system should respond with a status code of 200 and return a list of all available events.
+TC010,Heavy Load Testing,Verify that the system can handle 1000+ concurrent requests,"1. Send 1000+ POST request to create 1000+ Events
+2. Send 1000+ POST request to create 1000+ Customers",The system should respond with a status code of 201
+TC011,Heavy Load Testing - Book Tickets,"Verify that the system can handle 1000+ customers booking 
+1000+ tickets for a specific event",,
