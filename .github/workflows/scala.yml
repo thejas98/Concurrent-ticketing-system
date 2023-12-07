@@ -18,18 +18,17 @@ jobs:
       with:
         java-version: '11'
 
-    - name: Build with sbt
-      run: sbt compile
-
-    - name: Start Akka HTTP server
-      run: sbt 'runMain com.csye7200.cts.app.TicketAgencyApp'
-
     - name: Start Docker Compose
       run: docker-compose up -d
 
     - name: Wait for Cassandra to start
       run: sleep 30s  
 
+    - name: Build with sbt
+      run: sbt compile
+
+    - name: Start Akka HTTP server
+      run: sbt 'runMain com.csye7200.cts.app.TicketAgencyApp'
 
     - name: Run Gatling tests
       run: sbt 'Gatling/test'
