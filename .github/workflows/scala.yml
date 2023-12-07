@@ -12,11 +12,10 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
-
-    - name: Set up JDK
-      uses: actions/setup-java@v2
+    - name: Setup JDK
+      uses: actions/setup-java@v1
       with:
-        java-version: 'adopt@1.11'
+        java-version: '11'
 
     - name: Build with sbt
       run: sbt compile
