@@ -53,7 +53,7 @@ Join us on this transformative journey as we set out to revolutionize the world 
 ### Running the Application
 
 1. Before starting the application start the cassandra server by running the docker compose file using the command :
-   docker compose up
+   `docker compose up`
 2. Start the Http server by running the file called TicketAgencyApp.scala located at src/main/scala/com/csye7200/cts/app/TicketAgencyApp.scala.
 3. Now you can use Postman or curl command from CMD to test that the server is up.
 
@@ -86,8 +86,8 @@ Refer to the following document to see a list of all test cases with decriptions
 #### Unit Tests
 
 1. To run the unit tests for the application, run the following command from the root directory:
-   sbt Gatling/test
-2. After running the above line, a report gets generated under 'target/Gatling'. Each folder under this directory represents one run of the test case. You can open the index.html file under any one report folder to see the report in pdf.
+   `sbt Gatling/test`
+2. After running the above line, a report gets generated under `'target/Gatling'`. Each folder under this directory represents one run of the test case. You can open the `index.html` file under any one report folder to see the report in pdf.
    
 
 #### Integration and Performance Testing
@@ -95,6 +95,9 @@ Refer to the following document to see a list of all test cases with decriptions
 1. To run the testing for heavy loads of 1000+ concurrent users, we have prepared two test files:
    - HeavyLoadTesting : Create 1000+ Events and customers.
    - HeavyLoadTestingBookingTickets: Book 1000+ tickets for 1000+ customers for a specific event.
+2. To run the above test cases, use the following format to run:
+   ```sbt 'GatlingIt/testOnly com.csye7200.cts.HeavyLoadTesting'```
+
 
 
 Note: All the test cases are documents in the testcases.csv file located in the root directory.
