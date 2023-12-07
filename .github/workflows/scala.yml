@@ -9,9 +9,17 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    services:
+      cassandra:
+        image: cassandra:4.0.3
+        ports:
+          - 9042:9042
+        options: --health-cmd "cqlsh --execute 'DESC KEYSPACES'" --health-interval 10s --health-timeout 5s --health-retries 5
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
+
     - name: Setup JDK
       uses: actions/setup-java@v1
       with:
@@ -22,6 +30,9 @@ jobs:
 
     - name: Start Akka HTTP server
       run: sbt 'runMain com.csye7200.cts.app.TicketAgencyApp'
+
+    - name: Start Docker Compose
+      run: docker-compose up -d
 
     - name: Run Gatling tests
       run: sbt 'gatling:test'
