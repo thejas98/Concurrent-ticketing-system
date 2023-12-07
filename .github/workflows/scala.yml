@@ -28,8 +28,7 @@ jobs:
       run: sbt compile
 
     - name: Start Akka HTTP server
-      run: sbt 'runMain com.csye7200.cts.app.TicketAgencyApp' &
-    
+      run: sbt 'runMain com.csye7200.cts.app.TicketAgencyApp' > server_log.txt 2>&1 &    
     - name: Wait for Akka HTTP server to start
       run: |
         sleep 30s  # Adjust this based on how long it takes for your server to start
