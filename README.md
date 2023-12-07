@@ -118,11 +118,17 @@ If you'd like to contribute to this project, please follow these guidelines.
 4. Push to your branch: `git push origin feature-name`
 5. Open a pull request.
 
-## License
 
-This project is licensed under the [Your License] - see the [LICENSE.md](LICENSE.md) file for details.
 
 ## Acknowledgments
 
-- [Any acknowledgments, credits, or references you want to include]
+- Rockthejvm : We learned about the Akka principles throught the rockthejvm series about akka posted below - https://youtu.be/PPIPGzrc2wo?si=hfErEXTWADTCG8Xz
+
+## Declaration
+Contribution
+
+Thejas Bharadwaj :50%
+Suraj Visveswaraiya : 50%
+
+WE ATTEST THAT WE HAVEN'T USED ANY OTHER STUDENT'S WORK IN OUR ASSIGNMENT AND ABIDE BY THE POLICIES LISTED IN THE STUDENT HANDBOOK.
 
