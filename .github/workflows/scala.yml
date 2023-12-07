@@ -9,13 +9,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    services:
-      cassandra:
-        image: cassandra:4.0.3
-        ports:
-          - 9042:9042
-        options: --health-cmd "cqlsh --execute 'DESC KEYSPACES'" --health-interval 10s --health-timeout 5s --health-retries 5
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
@@ -34,5 +27,9 @@ jobs:
     - name: Start Docker Compose
       run: docker-compose up -d
 
+    - name: Wait for Cassandra to start
+      run: sleep 30s  
+
+
     - name: Run Gatling tests
-      run: sbt 'gatling:test'
+      run: sbt 'Gatling/test'
