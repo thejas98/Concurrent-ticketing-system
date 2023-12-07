@@ -1,0 +1,10 @@
+{
+  "simulation": "com.csye7200.cts.TicketAgencySimulation",
+  "simulationId": "ticketagencysimulation-20231207040720407",
+  "start": 1701922041440,
+  "description": "",
+  "scenarios": ["Purchase Ticket Scenario", "Get Ticket Details Scenario", "Get Event Scenario", "Create Event Scenario", "Get All Events Scenario", "Get All Customers Scenario", "Cancel Ticket Scenario", "Get Customer Details Scenario", "Create Customer Scenario"],
+  "assertions": [
+
+  ]
+}
