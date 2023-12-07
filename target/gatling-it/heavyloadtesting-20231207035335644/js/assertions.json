@@ -1,0 +1,10 @@
+{
+  "simulation": "com.csye7200.cts.HeavyLoadTesting",
+  "simulationId": "heavyloadtesting-20231207035335644",
+  "start": 1701921216569,
+  "description": "",
+  "scenarios": ["Create Event Scenario", "Create Customer Scenario"],
+  "assertions": [
+
+  ]
+}

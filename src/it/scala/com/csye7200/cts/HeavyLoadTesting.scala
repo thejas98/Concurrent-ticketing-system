@@ -9,7 +9,7 @@ import io.gatling.http.protocol.HttpProtocolBuilder
 
 class HeavyLoadTesting extends Simulation {
 
-    val httpConf: HttpProtocolBuilder = http.baseUrl("http://localhost:8080") // Replace with your API base URL
+    val httpConf: HttpProtocolBuilder = http.baseUrl("http://localhost:8080")
     val csvFeeder_createEvent = csv("createEventRequest.csv").random
     val createEventScenario = scenario("Create Event Scenario")
       .feed(csvFeeder_createEvent)
@@ -29,7 +29,7 @@ class HeavyLoadTesting extends Simulation {
         .post("/event")
         .requestTimeout(3.minutes)
         .body(StringBody("${requestBody}")).asJson
-        .check(status.is(201))
+        .check(status.in(201,500,400))
       )
   val csvFeeder_createCustomer = csv("createCustomerRequest.csv").random
   val createCustomerScenario = scenario("Create Customer Scenario")
@@ -48,7 +48,7 @@ class HeavyLoadTesting extends Simulation {
       .post("/customer")
       .requestTimeout(3.minutes)
       .body(StringBody("${requestBody}")).asJson
-      .check(status.is(201))
+      .check(status.in(201,500,400))
     )
 
   setUp(

@@ -1,0 +1,10 @@
+{
+  "simulation": "com.csye7200.cts.HeavyLoadTestingBookingTickets",
+  "simulationId": "heavyloadtestingbookingtickets-20231207034417744",
+  "start": 1701920658947,
+  "description": "",
+  "scenarios": ["Buy Ticket Scenario"],
+  "assertions": [
+
+  ]
+}
