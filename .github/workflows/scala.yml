@@ -31,8 +31,8 @@ jobs:
       run: sbt 'runMain com.csye7200.cts.app.TicketAgencyApp' > server_log.txt 2>&1 &    
     
     - name: Wait for Akka HTTP server to start
-      run:  sleep 30s 
-   
+      run:  sleep 1030s 
+      
     - name: Display Server Logs
       run: cat server_log.txt
 
