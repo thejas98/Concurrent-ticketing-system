@@ -1,0 +1,28 @@
+name: Build and Test
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up JDK
+      uses: actions/setup-java@v2
+      with:
+        java-version: 'adopt@1.11'
+
+    - name: Build with sbt
+      run: sbt compile
+
+    - name: Start Akka HTTP server
+      run: sbt 'runMain com.csye7200.cts.app.TicketAgencyApp'
+
+    - name: Run Gatling tests
+      run: sbt 'gatling:test'
