@@ -11,7 +11,7 @@ import com.csye7200.cts.actors.Customer.CustomerCommand.GetCustomer
 import com.csye7200.cts.actors.Customer.CustomerResponse.GetCustomerResponse
 import com.csye7200.cts.actors.Event.EventCommand.GetEvent
 import com.csye7200.cts.actors.Event.EventResponse.GetEventResponse
-import com.csye7200.cts.actors.TicketActor.TicketSellerCommand
+import com.csye7200.cts.actors.TicketActor.{TicketSellerCommand, TicketSellerResponse}
 import com.csye7200.cts.actors.TicketActor.TicketSellerCommand._
 import com.csye7200.cts.actors.TicketActor.TicketSellerResponse._
 
@@ -25,12 +25,15 @@ object TicketManagerActor {
 
   case class TicketsCreated(id: String) extends Event
 
+  case class GetAllTicketsForCustomer(customerID: String, replyTo: ActorRef[TicketSellerResponse]) extends TicketSellerCommand
+  case class GetAllTicketsForCustomerResponse(allTicketsForCustomer: List[String]) extends TicketSellerResponse
+
   // state
   case class State(tickets: Map[String, ActorRef[TicketSellerCommand]])
 
   def commandHandler(context: ActorContext[TicketSellerCommand]): (State, TicketSellerCommand) => Effect[Event, State] = (state, command) => {
     import scala.concurrent.duration._
-    implicit val timeout: Timeout = Timeout(10.seconds)
+    implicit val timeout: Timeout = Timeout(2.seconds)
     implicit val scheduler: Scheduler = context.system.scheduler
     implicit val ec: ExecutionContext = context.executionContext
 
@@ -85,6 +88,20 @@ object TicketManagerActor {
           case None =>
             Effect.reply(replyToCustomer)(GetTicketResponse(None))
         }
+      case GetAllTicketsForCustomer(customerID, replyToCustomer) =>
+        val ticketIDs: List[String] = state.tickets.flatMap {
+          case (key, ticketActor) =>
+            val tickets = ticketActor ? (replyTo => GetTicket(key, replyTo))
+            val ticketResult = Await.result(tickets, timeout.duration)
+            ticketResult match {
+              case GetTicketResponse(ticket) =>
+                ticket match {
+                  case Some(tickets) if tickets.customerID == customerID =>
+                    Some(tickets.ticketID)
+                }
+            }
+        }.toList
+        Effect.reply(replyToCustomer)(GetAllTicketsForCustomerResponse(ticketIDs))
     }
   }
 
@@ -95,7 +112,6 @@ object TicketManagerActor {
           .getOrElse(context.spawn(TicketActor(id), id))
           .asInstanceOf[ActorRef[TicketSellerCommand]]
         state.copy(state.tickets + (id -> tickets))
-
     }
   }
 

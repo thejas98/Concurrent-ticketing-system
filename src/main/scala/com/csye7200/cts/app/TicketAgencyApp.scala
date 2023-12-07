@@ -59,7 +59,7 @@ object TicketAgencyApp {
     }
 
     implicit val system: ActorSystem[RootCommand] = ActorSystem(rootBehavior, "TicketAgencySystem")
-    implicit val timeout: Timeout = Timeout(5.seconds)
+    implicit val timeout: Timeout = Timeout(2.seconds)
 
     val eventManagerActorFuture: Future[ActorRef[EventCommand]] = system.ask(replyTo => RetrieveEventManagerActor(replyTo))
     val ticketManagerActorFuture: Future[ActorRef[TicketSellerCommand]] = system.ask(replyTo => RetrieveTicketManagerActor(replyTo))
