@@ -88,8 +88,10 @@ Refer to the following document to see a list of all test cases with decriptions
 #### Unit Tests
 
 1. To run the unit tests for the application, run the following command from the root directory:
-   `sbt Gatling/test`
-2. After running the above line, a report gets generated under `'target/Gatling'`. Each folder under this directory represents one run of the test case. You can open the `index.html` file under any one report folder to see the report in pdf.
+   ```bash
+   sbt Gatling/test
+   ```
+3. After running the above line, a report gets generated under `'target/Gatling'`. Each folder under this directory represents one run of the test case. You can open the `index.html` file under any one report folder to see the report in pdf.
    
 
 #### Integration and Performance Testing
@@ -98,7 +100,9 @@ Refer to the following document to see a list of all test cases with decriptions
    - HeavyLoadTesting : Create 1000+ Events and customers.
    - HeavyLoadTestingBookingTickets: Book 1000+ tickets for 1000+ customers for a specific event.
 2. To run the above test cases, use the following format to run:
-   ```sbt 'GatlingIt/testOnly com.csye7200.cts.HeavyLoadTesting'```
+   ```bash
+   sbt 'GatlingIt/testOnly com.csye7200.cts.HeavyLoadTesting'
+   ```
 
 
 
