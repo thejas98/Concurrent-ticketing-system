@@ -53,9 +53,11 @@ Join us on this transformative journey as we set out to revolutionize the world 
 ### Running the Application
 
 1. Before starting the application start the cassandra server by running the docker compose file using the command :
-   `docker compose up`
-2. Start the Http server by running the file called TicketAgencyApp.scala located at src/main/scala/com/csye7200/cts/app/TicketAgencyApp.scala.
-3. Now you can use Postman or curl command from CMD to test that the server is up.
+   ```bash
+   docker compose up
+   ```
+3. Start the Http server by running the file called TicketAgencyApp.scala located at src/main/scala/com/csye7200/cts/app/TicketAgencyApp.scala.
+4. Now you can use Postman or curl command from CMD to test that the server is up.
 
 
 ### API Endpoints
